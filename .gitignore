@@ -1,0 +1,8 @@
+target/
+dist/
+CavalryKit.app/
+assets/icon.icns
+# 本地过程产物(设计记录含内网/本机路径,不进公开仓库)
+.impeccable/
+GUI设计全程记录.md
+regions.json
