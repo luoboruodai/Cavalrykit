@@ -30,9 +30,10 @@ pub fn setup(ctx: &egui::Context) {
 
     let has_cjk = match load_cjk() {
         Some(bytes) => {
-            fonts
-                .font_data
-                .insert("cjk".to_owned(), Arc::new(egui::FontData::from_owned(bytes)));
+            fonts.font_data.insert(
+                "cjk".to_owned(),
+                Arc::new(egui::FontData::from_owned(bytes)),
+            );
             true
         }
         None => {
@@ -47,15 +48,20 @@ pub fn setup(ctx: &egui::Context) {
         .or_default();
     proportional.insert(0, "roboto".to_owned());
     let mut medium_families = vec![FAMILY_MEDIUM.to_owned(), "roboto".to_owned()];
-    let mut bold_families = vec![FAMILY_SEMIBOLD.to_owned(), FAMILY_MEDIUM.to_owned(), "roboto".to_owned()];
+    let mut bold_families = vec![
+        FAMILY_SEMIBOLD.to_owned(),
+        FAMILY_MEDIUM.to_owned(),
+        "roboto".to_owned(),
+    ];
     if has_cjk {
         proportional.push("cjk".to_owned());
         medium_families.push("cjk".to_owned());
         bold_families.push("cjk".to_owned());
     }
-    fonts
-        .families
-        .insert(egui::FontFamily::Name(FAMILY_MEDIUM.into()), medium_families);
+    fonts.families.insert(
+        egui::FontFamily::Name(FAMILY_MEDIUM.into()),
+        medium_families,
+    );
     fonts.families.insert(
         egui::FontFamily::Name(FAMILY_SEMIBOLD.into()),
         bold_families,
@@ -76,8 +82,13 @@ fn load_cjk() -> Option<Vec<u8>> {
 
 #[cfg(target_os = "windows")]
 fn load_cjk() -> Option<Vec<u8>> {
-    const CANDIDATES: &[&str] = &[r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\simhei.ttf"];
-    CANDIDATES.iter().find_map(|p| std::fs::read(p).ok())
+    let fonts = std::env::var_os("WINDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"))
+        .join("Fonts");
+    ["msyh.ttc", "simhei.ttf", "simsun.ttc", "Deng.ttf"]
+        .iter()
+        .find_map(|name| std::fs::read(fonts.join(name)).ok())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

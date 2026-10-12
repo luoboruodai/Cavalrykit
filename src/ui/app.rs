@@ -1,493 +1,582 @@
-//! 主应用状态与界面框架(MD3:左栏动作轨 + 右区装备库 + 对话框 + snackbar)。
-
+//! UI state: bounded layout + event-driven background I/O + true modal dialogs.
+use super::theme as t;
+use crate::installer::{ConflictChoice, InstallPlan, Outcome, PlannedUnit};
+use crate::library::Library;
+use crate::paths::{self, CavalryPaths};
+use crate::worker::{Event, Job, Worker};
+use egui::{Margin, Vec2};
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
-use egui::{Margin, Vec2};
-
-use super::theme as t;
-use crate::installer::{self, ConflictChoice, InstallPlan, Outcome, PlannedUnit};
-use crate::library::{self, Library};
-use crate::paths::{self, CavalryPaths};
-
-/// 装备库筛选
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Filter {
     All,
     Scripts,
     Plugins,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Row {
+    Script(usize),
+    Plugin(usize),
+}
 
 pub struct CavalryKitApp {
     pub(crate) paths: Option<CavalryPaths>,
     pub(crate) filter: Filter,
-    /// 待安装的输入(拖入 / 文件对话框 / 命令行参数)
     pub(crate) queue: Vec<PathBuf>,
-    pub(crate) pending_plan: Option<InstallPlan>,
-    pub(crate) conflicts: Vec<PlannedUnit>,
-    pub(crate) resolved: Vec<(PlannedUnit, ConflictChoice)>,
+    pending_plan: Option<InstallPlan>,
+    pub(crate) conflicts: VecDeque<PlannedUnit>,
+    resolved: Vec<(PlannedUnit, ConflictChoice)>,
     pub(crate) outcome: Option<Outcome>,
     pub(crate) library: Library,
     pub(crate) confirm_uninstall: Option<PathBuf>,
     pub(crate) cavalry_running: bool,
-    pub(crate) about_open: bool,
-    /// snackbar(底部暗条),2.4s 自动消退
-    pub(crate) toast: Option<(String, Instant)>,
+    about_open: bool,
+    toast: Option<(String, Instant)>,
     pub(crate) search: String,
-    last_check: Instant,
     pub(crate) status_line: String,
+    pub(crate) busy: Option<&'static str>,
+    worker: Option<Worker>,
+    picker: Option<Receiver<Vec<PathBuf>>>,
+    pub(crate) rows: Vec<Row>,
+    cached_query: Option<(String, Filter)>,
+    logo: egui::TextureHandle,
 }
 
 impl CavalryKitApp {
-    pub fn new(initial_files: Vec<PathBuf>) -> Self {
-        let paths = CavalryPaths::detect();
-        let mut status_line = String::new();
-        if paths.is_none() {
-            status_line = "未能定位 Cavalry 目录 — 请先安装 Cavalry".to_string();
-        }
-        let library = paths.as_ref().map(library::scan).unwrap_or_default();
-        Self {
+    pub fn new(ctx: &egui::Context, initial_files: Vec<PathBuf>) -> Self {
+        Self::with_paths(ctx, initial_files, CavalryPaths::detect())
+    }
+
+    /// Dependency injection for headless/layout tests; production always uses detect().
+    pub fn with_paths(
+        ctx: &egui::Context,
+        initial_files: Vec<PathBuf>,
+        paths: Option<CavalryPaths>,
+    ) -> Self {
+        let worker = paths.clone().map(|p| {
+            let ctx = ctx.clone();
+            Worker::spawn(p, move || ctx.request_repaint())
+        });
+        let icon = super::icon::window_icon();
+        let logo = ctx.load_texture(
+            "cavalrykit-logo",
+            egui::ColorImage::from_rgba_unmultiplied(
+                [icon.width as usize, icon.height as usize],
+                &icon.rgba,
+            ),
+            egui::TextureOptions::LINEAR,
+        );
+        let mut app = Self {
             paths,
             filter: Filter::All,
-            queue: initial_files,
+            queue: Vec::new(),
             pending_plan: None,
-            conflicts: Vec::new(),
+            conflicts: VecDeque::new(),
             resolved: Vec::new(),
             outcome: None,
-            library,
+            library: Library::default(),
             confirm_uninstall: None,
-            cavalry_running: paths::is_cavalry_running(),
+            cavalry_running: false,
             about_open: false,
             toast: None,
             search: String::new(),
-            last_check: Instant::now(),
-            status_line,
+            status_line: String::new(),
+            busy: None,
+            worker,
+            picker: None,
+            rows: Vec::new(),
+            cached_query: None,
+            logo,
+        };
+        if app.paths.is_some() {
+            app.submit(Job::Scan, "正在读取装备库…");
+        } else {
+            app.status_line = "无法定位用户配置目录".into();
         }
+        app.enqueue(initial_files);
+        app
     }
 
     pub(crate) fn enqueue(&mut self, files: Vec<PathBuf>) {
-        let files: Vec<PathBuf> = files.into_iter().filter(|p| p.exists()).collect();
-        if files.is_empty() {
-            return;
+        // No metadata calls on the UI thread: network paths can block even exists().
+        let mut seen: HashSet<PathBuf> = self.queue.iter().cloned().collect();
+        for file in files {
+            if self.queue.len() >= 256 {
+                self.push_toast("单次队列最多 256 个输入，请分批导入。");
+                break;
+            }
+            if seen.insert(file.clone()) {
+                self.queue.push(file);
+            }
         }
-        self.outcome = None;
-        self.queue.extend(files);
     }
 
-    pub(crate) fn finish(&mut self, outcome: Outcome) {
-        self.outcome = Some(outcome);
-        self.pending_plan = None;
-        self.refresh_library();
+    fn submit(&mut self, job: Job, status: &'static str) {
+        let result = self
+            .worker
+            .as_ref()
+            .ok_or_else(|| "后台任务不可用".into())
+            .and_then(|w| w.submit(job));
+        match result {
+            Ok(()) => self.busy = Some(status),
+            Err(error) => {
+                self.busy = None;
+                self.report_error(error);
+            }
+        }
+    }
+
+    fn report_error(&mut self, error: String) {
+        self.outcome = Some(Outcome {
+            failures: vec![("操作未完成".into(), error)],
+            ..Default::default()
+        });
     }
 
     pub(crate) fn refresh_library(&mut self) {
-        if let Some(paths) = &self.paths {
-            self.library = library::scan(paths);
+        if self.busy.is_none() && self.pending_plan.is_none() {
+            self.submit(Job::Scan, "正在刷新装备库…");
         }
+    }
+
+    fn replace_library(&mut self, library: Library) {
+        self.library = library;
+        self.cached_query = None;
+    }
+
+    pub(crate) fn update_rows(&mut self) {
+        let key = (self.search.trim().to_lowercase(), self.filter);
+        if self.cached_query.as_ref() == Some(&key) {
+            return;
+        }
+        self.rows.clear();
+        if self.filter != Filter::Plugins {
+            self.rows.extend(
+                self.library
+                    .scripts
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.search_key.contains(&key.0))
+                    .map(|(i, _)| Row::Script(i)),
+            );
+        }
+        if self.filter != Filter::Scripts {
+            self.rows.extend(
+                self.library
+                    .plugins
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.search_key.contains(&key.0))
+                    .map(|(i, _)| Row::Plugin(i)),
+            );
+        }
+        self.cached_query = Some(key);
     }
 
     pub(crate) fn push_toast(&mut self, text: impl Into<String>) {
         self.toast = Some((text.into(), Instant::now()));
     }
 
-    fn resolve_current(&mut self, choice: ConflictChoice) {
-        if let Some(unit) = self.conflicts.first().cloned() {
-            self.resolved.push((unit, choice));
-            self.conflicts.remove(0);
+    pub(crate) fn pick_files(&mut self, ctx: &egui::Context) {
+        if self.picker.is_some() {
+            return;
         }
-        if self.conflicts.is_empty() {
-            if let Some(mut plan) = self.pending_plan.take() {
-                let resolved = std::mem::take(&mut self.resolved);
-                let mut outcome = installer::execute(plan.units, resolved);
-                outcome.failures.extend(std::mem::take(&mut plan.failures));
-                self.finish(outcome);
+        let future = rfd::AsyncFileDialog::new()
+            .add_filter(
+                "Cavalry 文件",
+                &[
+                    "jsc", "js", "jsx", "zip", "7z", "tar", "tgz", "tbz2", "gz", "bz2",
+                ],
+            )
+            .add_filter("所有文件", &["*"])
+            .pick_files();
+        let (tx, rx) = mpsc::channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let files = pollster::block_on(future)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|f| f.path().to_owned())
+                .collect();
+            let _ = tx.send(files);
+            ctx.request_repaint();
+        });
+        self.picker = Some(rx);
+    }
+
+    fn poll_events(&mut self) {
+        if let Some(picker) = &self.picker {
+            match picker.try_recv() {
+                Ok(files) => {
+                    self.picker = None;
+                    self.enqueue(files);
+                }
+                Err(TryRecvError::Disconnected) => {
+                    self.picker = None;
+                    self.report_error("文件选择窗口异常关闭".into());
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+        while let Some(worker) = &self.worker {
+            match worker.try_recv() {
+                Ok(Event::Running(value)) => self.cavalry_running = value,
+                Ok(Event::Library(lib)) => {
+                    self.replace_library(lib);
+                    self.busy = None;
+                }
+                Ok(Event::Planned(mut plan)) => {
+                    self.busy = None;
+                    self.conflicts = std::mem::take(&mut plan.conflicts).into();
+                    if self.conflicts.is_empty() {
+                        self.submit(Job::Install(plan, vec![]), "正在安装…");
+                    } else {
+                        self.pending_plan = Some(plan);
+                    }
+                }
+                Ok(Event::Installed(outcome, lib)) => {
+                    self.busy = None;
+                    self.replace_library(lib);
+                    self.outcome = Some(outcome);
+                }
+                Ok(Event::Uninstalled(result, lib)) => {
+                    self.busy = None;
+                    self.replace_library(lib);
+                    match result {
+                        Ok(()) => self.push_toast("已移入废纸篓 / 回收站，可在系统中恢复"),
+                        Err(error) => self.report_error(error),
+                    }
+                }
+                Ok(Event::Failed(error)) => {
+                    self.busy = None;
+                    self.report_error(error);
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    self.worker = None;
+                    self.busy = None;
+                    self.report_error("后台线程已停止，请关闭后重新打开 CavalryKit。".into());
+                    break;
+                }
             }
         }
     }
 
-    fn pump_install_queue(&mut self) {
-        if self.pending_plan.is_some() || !self.conflicts.is_empty() {
-            return;
-        }
-        if self.queue.is_empty() || self.paths.is_none() {
-            return;
-        }
-        let paths = self.paths.clone().unwrap();
-        let queue = std::mem::take(&mut self.queue);
-        let mut plan = installer::plan(&queue, &paths);
-        if plan.conflicts.is_empty() {
-            let mut outcome = installer::execute(std::mem::take(&mut plan.units), vec![]);
-            outcome.failures.extend(std::mem::take(&mut plan.failures));
-            self.finish(outcome);
-        } else {
-            self.conflicts = std::mem::take(&mut plan.conflicts);
-            self.pending_plan = Some(plan);
+    fn pump_queue(&mut self) {
+        if self.busy.is_none()
+            && self.pending_plan.is_none()
+            && self.outcome.is_none()
+            && self.confirm_uninstall.is_none()
+            && !self.about_open
+            && !self.queue.is_empty()
+            && self.paths.is_some()
+        {
+            let files = std::mem::take(&mut self.queue);
+            self.submit(Job::Plan(files), "正在识别与解压…");
         }
     }
-}
 
-impl eframe::App for CavalryKitApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // 1. 拖放
-        let dropped: Vec<PathBuf> = ctx.input(|i| {
+    fn resolve_current(&mut self, choice: ConflictChoice) {
+        if let Some(unit) = self.conflicts.pop_front() {
+            self.resolved.push((unit, choice));
+        }
+        if self.conflicts.is_empty() {
+            if let Some(plan) = self.pending_plan.take() {
+                let resolved = std::mem::take(&mut self.resolved);
+                self.submit(Job::Install(plan, resolved), "正在安装…");
+            }
+        }
+    }
+
+    pub fn draw(&mut self, ctx: &egui::Context) {
+        self.poll_events();
+        let dropped = ctx.input(|i| {
             i.raw
                 .dropped_files
                 .iter()
                 .filter_map(|f| f.path.clone())
                 .collect()
         });
-        if !dropped.is_empty() {
-            self.enqueue(dropped);
+        self.enqueue(dropped);
+        self.pump_queue();
+        if ctx.input(|i| i.viewport().close_requested())
+            && (self.busy.is_some() || self.picker.is_some())
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.push_toast("操作尚未完成，请稍后关闭窗口。");
         }
-
-        // 2. Cavalry 运行状态
-        if self.last_check.elapsed() > Duration::from_secs(2) {
-            self.last_check = Instant::now();
-            self.cavalry_running = paths::is_cavalry_running();
-        }
-
-        // 3. 安装流水线
-        self.pump_install_queue();
-
-        // 4. 主界面:左栏动作轨(约 26%)+ 右区装备库(comp-b 构图)
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(t::SURFACE)
-                    .inner_margin(Margin {
-                        left: 16,
-                        right: 16,
-                        top: 14,
-                        bottom: 16,
-                    }),
-            )
+            .frame(egui::Frame::new().fill(t::SURFACE).inner_margin(Margin {
+                left: 16,
+                right: 16,
+                top: 14,
+                bottom: 16,
+            }))
             .show(ctx, |ui| {
                 let full = ui.max_rect();
-                let rail_w = (full.width() * 0.26).clamp(220.0, 260.0);
-                let gap = 16.0_f32;
-                // 左栏
-                let rail_rect = egui::Rect::from_min_size(full.min, Vec2::new(rail_w, full.height()));
-                let mut rail_ui = ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(rail_rect)
-                        .layout(egui::Layout::top_down(egui::Align::LEFT)),
-                );
+                let rail_w = 230.0;
+                let rail_rect =
+                    egui::Rect::from_min_size(full.min, Vec2::new(rail_w, full.height()));
+                let mut rail =
+                    ui.new_child(egui::UiBuilder::new().id_salt("rail").max_rect(rail_rect));
+                rail.set_clip_rect(rail_rect.intersect(ui.clip_rect()));
                 egui::Frame::new()
                     .fill(t::SURFACE_CONTAINER)
-                    .corner_radius(egui::CornerRadius::same(t::RADIUS_MD))
+                    .corner_radius(t::RADIUS_MD)
                     .inner_margin(14.0)
-                    .show(&mut rail_ui, |ui| {
+                    .show(&mut rail, |ui| {
                         ui.set_width(rail_w - 28.0);
-                        self.show_rail(ui);
+                        egui::ScrollArea::vertical()
+                            .id_salt("rail-scroll")
+                            .max_height(full.height() - 28.0)
+                            .show(ui, |ui| self.show_rail(ui));
                     });
-                // 右区
                 let lib_rect = egui::Rect::from_min_max(
-                    egui::Pos2::new(full.min.x + rail_w + gap, full.min.y),
+                    egui::pos2(full.min.x + rail_w + 16.0, full.min.y),
                     full.max,
                 );
-                let mut lib_ui = ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(lib_rect)
-                        .layout(egui::Layout::top_down(egui::Align::LEFT)),
-                );
-                self.show_library(&mut lib_ui);
+                let mut lib =
+                    ui.new_child(egui::UiBuilder::new().id_salt("library").max_rect(lib_rect));
+                lib.set_clip_rect(lib_rect.intersect(ui.clip_rect()));
+                self.show_library(&mut lib);
             });
-
-        // 5. Snackbar(底部暗条)
         if let Some((text, at)) = &self.toast {
-            if at.elapsed() > Duration::from_millis(2400) {
+            let lifetime = Duration::from_millis(2600);
+            if at.elapsed() >= lifetime {
                 self.toast = None;
             } else {
-                let t_in = ctx.animate_bool_with_time(egui::Id::new("ck-toast"), true, 0.2);
-                let galley = ctx.fonts(|f| {
-                    f.layout_no_wrap(text.clone(), t::font(t::BODY_MD), t::INVERSE_ON_SURFACE)
-                });
-                let size = egui::vec2(galley.size().x + 48.0, 48.0);
-                egui::Area::new(egui::Id::new("ck-toast-area"))
-                    .order(egui::Order::Middle)
-                    .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -20.0 - (1.0 - t_in) * 8.0))
+                ctx.request_repaint_after(lifetime.saturating_sub(at.elapsed()));
+                egui::Area::new(egui::Id::new("toast"))
+                    .order(egui::Order::Foreground)
+                    .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -18.0])
                     .show(ctx, |ui| {
-                        let (rect, _) =
-                            ui.allocate_exact_size(size * t_in.max(0.85), egui::Sense::hover());
-                        let painter = ui.painter();
-                        painter.rect_filled(
-                            rect,
-                            egui::CornerRadius::same(t::RADIUS_XS),
-                            t::fade(t::INVERSE_SURFACE, t_in),
-                        );
-                        painter.galley(
-                            rect.center() - galley.size() / 2.0,
-                            galley,
-                            t::fade(t::INVERSE_ON_SURFACE, t_in),
-                        );
+                        egui::Frame::new()
+                            .fill(t::INVERSE_SURFACE)
+                            .corner_radius(8)
+                            .inner_margin(16.0)
+                            .show(ui, |ui| {
+                                ui.set_max_width(500.0);
+                                ui.label(t::body(text, t::BODY_MD).color(t::INVERSE_ON_SURFACE));
+                            });
                     });
             }
         }
-
-        // 6. 对话框
+        // Only one modal at a time; all underlying controls are blocked by egui::Modal.
         if !self.conflicts.is_empty() {
             self.show_conflict_dialog(ctx);
-        }
-        if self.confirm_uninstall.is_some() {
+        } else if self.outcome.is_some() {
+            self.show_result_dialog(ctx);
+        } else if self.confirm_uninstall.is_some() {
             self.show_uninstall_dialog(ctx);
-        }
-        if self.about_open {
+        } else if self.about_open {
             self.show_about_dialog(ctx);
         }
     }
-}
 
-impl CavalryKitApp {
-    /// 左栏动作轨:品牌行(字标 + 状态 chip 同行)+ 安装区 + 目录入口(固定间距)
     fn show_rail(&mut self, ui: &mut egui::Ui) {
-        // 品牌行:紫块 >_ + 字标 + 紧凑状态 chip(同行右对齐;chip 缩小避免遮挡)
-        ui.allocate_ui_with_layout(
-            Vec2::new(ui.available_width(), 34.0),
-            egui::Layout::left_to_right(egui::Align::Center),
-            |ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                let (mark, _) = ui.allocate_exact_size(Vec2::splat(34.0), egui::Sense::hover());
-                let painter = ui.painter_at(mark);
-                painter.rect_filled(mark, egui::CornerRadius::same(t::RADIUS_SM), t::PRIMARY);
-                let g = ui
-                    .painter()
-                    .layout_no_wrap(">_".to_owned(), t::font_bold(13.0), t::ON_PRIMARY);
-                ui.painter()
-                    .galley(mark.center() - g.size() / 2.0 + Vec2::new(1.0, 0.0), g, t::ON_PRIMARY);
-                ui.label(t::medium("CavalryKit", 16.0).color(t::ON_SURFACE));
-                ui.allocate_ui_with_layout(
-                    Vec2::new(ui.available_width(), 24.0),
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        t::status_chip_compact(
-                            ui,
-                            self.cavalry_running,
-                            if self.cavalry_running { "运行中" } else { "未运行" },
-                        );
-                    },
-                );
+        ui.horizontal(|ui| {
+            ui.image((self.logo.id(), Vec2::splat(34.0)));
+            ui.label(t::medium("CavalryKit", 18.0).color(t::ON_SURFACE));
+        });
+        ui.add_space(4.0);
+        t::status_chip_compact(
+            ui,
+            self.cavalry_running,
+            if self.cavalry_running {
+                "Cavalry 运行中"
+            } else {
+                "Cavalry 未运行"
             },
         );
         ui.add_space(12.0);
-
-        // 安装区(拖放卡或结果卡;占左栏余量)
         self.show_install_stage(ui);
-
-        // 底端:目录入口与 CTA 固定间距(不随窗口高度漂移)
         ui.add_space(12.0);
         rail_link(ui, "脚本目录", Icon::Folder, || {
-            if let Some(p) = self.paths.clone() {
+            if let Some(p) = &self.paths {
                 paths::open_dir(&p.scripts);
             }
         });
-        ui.add_space(4.0);
         rail_link(ui, "插件目录", Icon::Puzzle, || {
-            if let Some(p) = self.paths.clone() {
+            if let Some(p) = &self.paths {
                 paths::open_dir(&p.plugins);
             }
         });
-        ui.add_space(4.0);
-        let about = self.about_open;
-        rail_link(ui, "关于", Icon::Info, || {
-            if !about {
-                self.about_open = true;
-            }
-        });
+        rail_link(ui, "关于", Icon::Info, || self.about_open = true);
     }
 
     fn show_conflict_dialog(&mut self, ctx: &egui::Context) {
-        let t_in = ctx.animate_bool_with_time(egui::Id::new("ck-dialog-conflict"), true, 0.2);
-        t::dim_screen(ctx, "dlg-dim", 0.32 * t_in);
-
-        let (kind_label, dest_text, remaining) = {
-            let c = &self.conflicts[0];
-            (
-                c.kind.label(),
-                c.dest.to_string_lossy().replace('\\', "/"),
-                self.conflicts.len(),
-            )
-        };
-
-        let mut choice: Option<ConflictChoice> = None;
-        t::modal_area(ctx, "dlg-conflict", t_in, |ui| {
-            t::dialog_frame()
-                .fill(t::fade(t::SURFACE_CONTAINER_HIGH, t_in))
-                .show(ui, |ui| {
-                    ui.set_width(392.0);
-                    ui.label(
-                        t::medium("安装冲突", t::TITLE_LG).color(t::fade(t::ON_SURFACE, t_in)),
-                    );
-                    ui.add_space(10.0);
-                    ui.label(
-                        egui::RichText::new(format!("目标位置已存在同名{kind_label}:"))
-                            .font(t::font(t::BODY_MD))
-                            .color(t::fade(t::ON_SURFACE_VARIANT, t_in)),
-                    );
-                    ui.add_space(2.0);
-                    ui.label(
-                        egui::RichText::new(dest_text)
-                            .font(t::font(t::BODY_SM))
-                            .color(t::fade(t::ON_SURFACE_VARIANT, t_in)),
-                    );
-                    ui.add_space(20.0);
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(ui.available_width(), 40.0),
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            if t::button(ui, "覆盖", t::Btn::Filled, 40.0).clicked() {
-                                choice = Some(ConflictChoice::Overwrite);
-                            }
-                            ui.add_space(4.0);
-                            if t::button(ui, "保留两者", t::Btn::Text(t::PRIMARY), 40.0).clicked() {
-                                choice = Some(ConflictChoice::KeepBoth);
-                            }
-                            ui.add_space(4.0);
-                            if t::button(ui, "跳过", t::Btn::Text(t::PRIMARY), 40.0).clicked() {
-                                choice = Some(ConflictChoice::Skip);
-                            }
-                        },
-                    );
-                    ui.add_space(4.0);
-                    ui.label(
-                        egui::RichText::new(format!("还有 {remaining} 个冲突待处理"))
-                            .font(t::font(t::LABEL_MD))
-                            .color(t::fade(t::ON_SURFACE_VARIANT, t_in)),
-                    );
-                });
+        let unit = self.conflicts.front().unwrap();
+        let mut choice = None;
+        modal(ctx, "conflict", |ui| {
+            ui.label(t::medium("安装冲突", t::TITLE_LG));
+            ui.label(format!("已存在同名{}：", unit.kind.label()));
+            ui.add(egui::Label::new(unit.dest.to_string_lossy()).wrap());
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                for (label, value, style) in [
+                    ("覆盖", ConflictChoice::Overwrite, t::Btn::Filled),
+                    (
+                        "保留两者",
+                        ConflictChoice::KeepBoth,
+                        t::Btn::Text(t::PRIMARY),
+                    ),
+                    ("跳过", ConflictChoice::Skip, t::Btn::Text(t::PRIMARY)),
+                ] {
+                    if t::button(ui, label, style, 40.0).clicked() {
+                        choice = Some(value);
+                    }
+                }
+            });
+            ui.label(t::body(
+                format!("还有 {} 个冲突待处理", self.conflicts.len()),
+                t::BODY_SM,
+            ));
         });
-        if let Some(c) = choice {
-            self.resolve_current(c);
+        if let Some(choice) = choice {
+            self.resolve_current(choice);
+        }
+    }
+
+    fn show_result_dialog(&mut self, ctx: &egui::Context) {
+        let outcome = self.outcome.as_ref().unwrap();
+        let mut close = false;
+        let response = modal(ctx, "result", |ui| {
+            ui.label(t::medium(
+                if outcome.failures.is_empty() {
+                    "安装完成"
+                } else {
+                    "安装结果 · 请检查"
+                },
+                t::TITLE_LG,
+            ));
+            ui.label(format!(
+                "成功 {} · 跳过 {} · 失败 {}",
+                outcome.installed_scripts.len() + outcome.installed_plugins.len(),
+                outcome.skipped.len(),
+                outcome.failures.len()
+            ));
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical()
+                .id_salt("result-rows")
+                .max_height((ctx.screen_rect().height() - 260.0).clamp(100.0, 340.0))
+                .show(ui, |ui| {
+                    for name in outcome
+                        .installed_scripts
+                        .iter()
+                        .chain(&outcome.installed_plugins)
+                    {
+                        ui.add(
+                            egui::Label::new(
+                                t::body(format!("已安装：{name}"), t::BODY_MD)
+                                    .color(t::ON_SUCCESS_CONTAINER),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    for name in &outcome.skipped {
+                        ui.add(egui::Label::new(format!("已跳过：{name}")).wrap());
+                    }
+                    for (name, reason) in &outcome.failures {
+                        ui.add(
+                            egui::Label::new(
+                                t::body(format!("{name}\n{reason}"), t::BODY_MD).color(t::ERROR),
+                            )
+                            .wrap(),
+                        );
+                    }
+                });
+            if outcome.restart_hint {
+                ui.label(
+                    t::body("插件已安装，重启 Cavalry 后生效。", t::BODY_MD).color(t::PRIMARY),
+                );
+            }
+            if !self.queue.is_empty() {
+                ui.label(format!(
+                    "确认后继续处理 {} 个待安装输入。",
+                    self.queue.len()
+                ));
+            }
+            ui.add_space(10.0);
+            if t::button(ui, "知道了", t::Btn::Filled, 40.0).clicked() {
+                close = true;
+            }
+        });
+        if close || response.should_close() {
+            self.outcome = None;
+            ctx.request_repaint();
         }
     }
 
     fn show_uninstall_dialog(&mut self, ctx: &egui::Context) {
-        let t_in = ctx.animate_bool_with_time(egui::Id::new("ck-dialog-uninstall"), true, 0.2);
-        t::dim_screen(ctx, "dlg-dim2", 0.32 * t_in);
-
-        let target = self.confirm_uninstall.clone().unwrap();
-        let name = target
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| target.display().to_string());
-
-        let mut decided: Option<bool> = None;
-        t::modal_area(ctx, "dlg-uninstall", t_in, |ui| {
-            t::dialog_frame()
-                .fill(t::fade(t::SURFACE_CONTAINER_HIGH, t_in))
-                .show(ui, |ui| {
-                    ui.set_width(360.0);
-                    ui.label(
-                        t::medium("确认卸载", t::TITLE_LG).color(t::fade(t::ON_SURFACE, t_in)),
-                    );
-                    ui.add_space(10.0);
-                    ui.label(
-                        egui::RichText::new("将以下条目移入废纸篓(可从废纸篓恢复):")
-                            .font(t::font(t::BODY_MD))
-                            .color(t::fade(t::ON_SURFACE_VARIANT, t_in)),
-                    );
-                    ui.add_space(2.0);
-                    ui.label(
-                        egui::RichText::new(name.clone())
-                            .font(t::font(t::BODY_SM))
-                            .color(t::fade(t::ON_SURFACE_VARIANT, t_in)),
-                    );
-                    ui.add_space(20.0);
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(ui.available_width(), 40.0),
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            if t::button(ui, "移入废纸篓", t::Btn::Filled, 40.0).clicked() {
-                                decided = Some(true);
-                            }
-                            ui.add_space(4.0);
-                            if t::button(ui, "取消", t::Btn::Text(t::PRIMARY), 40.0).clicked() {
-                                decided = Some(false);
-                            }
-                        },
-                    );
-                });
+        let target = self.confirm_uninstall.as_ref().unwrap();
+        let mut decided = None;
+        let response = modal(ctx, "uninstall", |ui| {
+            ui.label(t::medium("确认卸载", t::TITLE_LG));
+            ui.label("将以下条目移入废纸篓 / 回收站（可恢复）：");
+            ui.add(
+                egui::Label::new(target.file_name().unwrap_or_default().to_string_lossy()).wrap(),
+            );
+            ui.horizontal(|ui| {
+                if t::button(ui, "移入废纸篓", t::Btn::Filled, 40.0).clicked() {
+                    decided = Some(true);
+                }
+                if t::button(ui, "取消", t::Btn::Text(t::PRIMARY), 40.0).clicked() {
+                    decided = Some(false);
+                }
+            });
         });
-
-        match decided {
-            Some(true) => {
-                let result = self
-                    .paths
-                    .as_ref()
-                    .ok_or_else(|| "Cavalry 目录不可用".to_string())
-                    .and_then(|p| library::uninstall(p, &target));
-                self.status_line = match result {
-                    Ok(()) => format!("已卸载: {name}"),
-                    Err(e) => format!("卸载失败: {e}"),
-                };
-                self.push_toast(self.status_line.clone());
-                self.confirm_uninstall = None;
-                self.refresh_library();
-            }
-            Some(false) => self.confirm_uninstall = None,
-            None => {}
+        if decided == Some(true) {
+            let target = self.confirm_uninstall.take().unwrap();
+            self.submit(Job::Uninstall(target), "正在卸载…");
+        } else if decided == Some(false) || response.should_close() {
+            self.confirm_uninstall = None;
         }
     }
 
     fn show_about_dialog(&mut self, ctx: &egui::Context) {
-        let t_in = ctx.animate_bool_with_time(egui::Id::new("ck-dialog-about"), true, 0.2);
-        t::dim_screen(ctx, "dlg-dim3", 0.32 * t_in);
         let mut close = false;
-        t::modal_area(ctx, "dlg-about", t_in, |ui| {
-            t::dialog_frame()
-                .fill(t::fade(t::SURFACE_CONTAINER_HIGH, t_in))
-                .show(ui, |ui| {
-                    ui.set_width(320.0);
-                    ui.horizontal(|ui| {
-                        let (mark, _) =
-                            ui.allocate_exact_size(Vec2::splat(34.0), egui::Sense::hover());
-                        ui.painter_at(mark).rect_filled(
-                            mark,
-                            egui::CornerRadius::same(t::RADIUS_SM),
-                            t::PRIMARY,
-                        );
-                        let g = ui.painter().layout_no_wrap(
-                            ">_".to_owned(),
-                            t::font_bold(13.0),
-                            t::ON_PRIMARY,
-                        );
-                        ui.painter().galley(
-                            mark.center() - g.size() / 2.0 + Vec2::new(1.0, 0.0),
-                            g,
-                            t::ON_PRIMARY,
-                        );
-                        ui.add_space(4.0);
-                        ui.label(
-                            t::medium("CavalryKit", t::TITLE_LG).color(t::fade(t::ON_SURFACE, t_in)),
-                        );
-                    });
-                    ui.add_space(8.0);
-                    ui.label(
-                        t::body("Cavalry 脚本与插件的快捷安装器。拖入即装,冲突逐个询问,随时还原。", t::BODY_MD)
-                            .color(t::fade(t::ON_SURFACE_VARIANT, t_in)),
-                    );
-                    ui.add_space(6.0);
-                    ui.label(
-                        t::body("v0.1.0 · 仅供学习用途 · 与 Scene Group 无关", t::BODY_SM)
-                            .color(t::fade(t::ON_SURFACE_VARIANT, t_in)),
-                    );
-                    ui.add_space(16.0);
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(ui.available_width(), 40.0),
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            if t::button(ui, "知道了", t::Btn::Filled, 40.0).clicked() {
-                                close = true;
-                            }
-                        },
-                    );
-                });
+        let response = modal(ctx, "about", |ui| {
+            ui.horizontal(|ui| {
+                ui.image((self.logo.id(), Vec2::splat(40.0)));
+                ui.label(t::medium("CavalryKit", t::TITLE_LG));
+            });
+            ui.label("Cavalry 脚本与插件的快捷安装器。拖入即装，冲突逐个询问，卸载可恢复。");
+            ui.label(format!(
+                "v{} · 仅供学习用途 · 与 Scene Group 无关",
+                env!("CARGO_PKG_VERSION")
+            ));
+            if t::button(ui, "知道了", t::Btn::Filled, 40.0).clicked() {
+                close = true;
+            }
         });
-        if close {
+        if close || response.should_close() {
             self.about_open = false;
         }
     }
 }
 
+impl eframe::App for CavalryKitApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.draw(ctx);
+    }
+}
+
+fn modal<R>(
+    ctx: &egui::Context,
+    id: &str,
+    contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::ModalResponse<R> {
+    egui::Modal::new(egui::Id::new(id))
+        .frame(t::dialog_frame())
+        .show(ctx, |ui| {
+            ui.set_width((ctx.screen_rect().width() - 100.0).clamp(260.0, 480.0));
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            contents(ui)
+        })
+}
 // ==================== 轨内链接 ====================
 
 enum Icon {
@@ -501,10 +590,15 @@ fn rail_link(ui: &mut egui::Ui, text: &str, icon: Icon, on_click: impl FnOnce())
     let h = 26.0_f32;
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), text));
     let k = t::interact_t(ui, resp.id, resp.hovered());
     let painter = ui.painter_at(rect);
     if k > 0.0 {
-        painter.rect_filled(rect, egui::CornerRadius::same(t::RADIUS_SM), t::with_alpha(t::STATE_HOVER_NEUTRAL, k));
+        painter.rect_filled(
+            rect,
+            egui::CornerRadius::same(t::RADIUS_SM),
+            t::with_alpha(t::STATE_HOVER_NEUTRAL, k),
+        );
     }
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -526,11 +620,17 @@ fn rail_link(ui: &mut egui::Ui, text: &str, icon: Icon, on_click: impl FnOnce())
                 egui::StrokeKind::Inside,
             );
             painter.line_segment(
-                [egui::Pos2::new(c.x - 7.0, c.y - 4.0), egui::Pos2::new(c.x - 2.0, c.y - 4.0)],
+                [
+                    egui::Pos2::new(c.x - 7.0, c.y - 4.0),
+                    egui::Pos2::new(c.x - 2.0, c.y - 4.0),
+                ],
                 egui::Stroke::new(2.0_f32, col),
             );
             painter.line_segment(
-                [egui::Pos2::new(c.x - 2.0, c.y - 4.0), egui::Pos2::new(c.x - 0.5, c.y - 2.5)],
+                [
+                    egui::Pos2::new(c.x - 2.0, c.y - 4.0),
+                    egui::Pos2::new(c.x - 0.5, c.y - 2.5),
+                ],
                 egui::Stroke::new(1.5_f32, col),
             );
         }
@@ -540,7 +640,9 @@ fn rail_link(ui: &mut egui::Ui, text: &str, icon: Icon, on_click: impl FnOnce())
         }
         Icon::Info => {
             painter.circle_stroke(c, 6.0, egui::Stroke::new(1.5_f32, col));
-            let g = ui.painter().layout_no_wrap("i".to_owned(), t::font_bold(9.0), col);
+            let g = ui
+                .painter()
+                .layout_no_wrap("i".to_owned(), t::font_bold(9.0), col);
             ui.painter().galley(c - g.size() / 2.0, g, col);
         }
     }
@@ -554,5 +656,146 @@ fn rail_link(ui: &mut egui::Ui, text: &str, icon: Icon, on_click: impl FnOnce())
     );
     if resp.clicked() {
         on_click();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn fixture() -> (egui::Context, CavalryKitApp) {
+        let ctx = egui::Context::default();
+        super::super::fonts::setup(&ctx);
+        t::apply(&ctx);
+        let app = CavalryKitApp::with_paths(&ctx, vec![], None);
+        (ctx, app)
+    }
+    fn render(
+        ctx: &egui::Context,
+        app: &mut CavalryKitApp,
+        size: [f32; 2],
+        time: f64,
+    ) -> egui::FullOutput {
+        ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size.into())),
+                time: Some(time),
+                ..Default::default()
+            },
+            |ctx| app.draw(ctx),
+        )
+    }
+    #[test]
+    fn large_library_renders_only_visible_rows_and_caches_filter() {
+        let (ctx, mut app) = fixture();
+        for i in 0..10_000 {
+            let name = format!("Very long script name {i:05} {}.js", "中文".repeat(60));
+            app.library.scripts.push(crate::library::ScriptEntry {
+                search_key: name.to_lowercase(),
+                name,
+                group: None,
+                path: format!("synthetic/{i}.js").into(),
+            });
+        }
+        let _ = render(&ctx, &mut app, [960.0, 680.0], 0.0);
+        let output = render(&ctx, &mut app, [960.0, 680.0], 2.0);
+        assert_eq!(app.rows.len(), 10_000);
+        assert!(
+            output.shapes.len() < 700,
+            "rows were not virtualized: {} shapes",
+            output.shapes.len()
+        );
+        let mut samples = Vec::new();
+        for frame in 0..300 {
+            let start = Instant::now();
+            let out = render(&ctx, &mut app, [960.0, 680.0], 3.0 + frame as f64 / 60.0);
+            let _ = ctx.tessellate(out.shapes, out.pixels_per_point);
+            samples.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        samples.sort_by(f64::total_cmp);
+        println!(
+            "PERF_10K_UI {{\"p50_ms\":{:.3},\"p95_ms\":{:.3},\"samples\":300}}",
+            samples[150], samples[285]
+        );
+        let allocation = app.rows.as_ptr();
+        app.update_rows();
+        assert_eq!(allocation, app.rows.as_ptr());
+        app.search = "09999".into();
+        app.update_rows();
+        assert_eq!(app.rows, vec![Row::Script(9999)]);
+        app.filter = Filter::Plugins;
+        app.update_rows();
+        assert!(app.rows.is_empty());
+    }
+    #[test]
+    fn long_failure_is_modal_and_does_not_change_import_layout() {
+        let (ctx, mut app) = fixture();
+        for (index, size) in [[800.0, 560.0], [960.0, 680.0], [1440.0, 900.0]]
+            .into_iter()
+            .enumerate()
+        {
+            app.outcome = None;
+            for i in 0..3 {
+                let _ = render(&ctx, &mut app, size, (index * 10 + i) as f64);
+            }
+            let baseline = render(&ctx, &mut app, size, 40.0);
+            app.outcome = Some(Outcome {
+                failures: vec![("script.js".into(), "very-long-input-path/".repeat(100))],
+                ..Default::default()
+            });
+            for i in 0..3 {
+                let _ = render(&ctx, &mut app, size, 42.0 + i as f64);
+            }
+            let modal = render(&ctx, &mut app, size, 46.0);
+            fn rail_rects(out: &egui::FullOutput) -> Vec<egui::Rect> {
+                out.shapes
+                    .iter()
+                    .filter_map(|s| match &s.shape {
+                        egui::Shape::Rect(r)
+                            if s.clip_rect.max.x <= 246.1 && r.rect.width() > 180.0 =>
+                        {
+                            Some(r.rect)
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            }
+            assert!(!rail_rects(&baseline).is_empty());
+            assert_eq!(
+                rail_rects(&baseline),
+                rail_rects(&modal),
+                "result resized the import rail"
+            );
+            assert!(ctx.memory(|m| m.top_modal_layer().is_some()));
+            fn modal_fits(shape: &egui::Shape, size: [f32; 2]) -> bool {
+                match shape {
+                    egui::Shape::Rect(r) => {
+                        r.fill == t::SURFACE_CONTAINER_HIGH
+                            && r.rect.width() <= size[0] - 40.0
+                            && r.rect.height() <= size[1]
+                            && r.rect.min.y >= 0.0
+                            && r.rect.max.y <= size[1]
+                    }
+                    egui::Shape::Vec(shapes) => shapes.iter().any(|s| modal_fits(s, size)),
+                    _ => false,
+                }
+            }
+            assert!(
+                modal.shapes.iter().any(|s| modal_fits(&s.shape, size)),
+                "modal exceeded viewport"
+            );
+        }
+    }
+    #[test]
+    fn queue_deduplicates_and_is_bounded_without_stat_calls() {
+        let (_, mut app) = fixture();
+        app.enqueue(vec!["missing.js".into(), "missing.js".into()]);
+        assert_eq!(app.queue.len(), 1);
+        app.enqueue(
+            (0..300)
+                .map(|n| PathBuf::from(format!("missing{n}.js")))
+                .collect(),
+        );
+        assert_eq!(app.queue.len(), 256);
+        assert!(app.toast.is_some());
     }
 }

@@ -95,8 +95,9 @@ pub fn plan(inputs: &[PathBuf], paths: &CavalryPaths) -> InstallPlan {
     }
 
     let mut conflicts = Vec::new();
+    let mut destinations = std::collections::HashSet::new();
     units.retain(|u| {
-        if u.dest.exists() {
+        if u.dest.exists() || !destinations.insert(u.dest.clone()) {
             conflicts.push(u.clone());
             false
         } else {
@@ -115,29 +116,23 @@ pub fn plan(inputs: &[PathBuf], paths: &CavalryPaths) -> InstallPlan {
 /// 执行安装：普通条目直接复制，冲突条目按用户选择处理。
 pub fn execute(units: Vec<PlannedUnit>, resolved: Vec<(PlannedUnit, ConflictChoice)>) -> Outcome {
     let mut outcome = Outcome::default();
-    let mut to_copy: Vec<PlannedUnit> = units;
-
-    for (unit, choice) in resolved {
-        match choice {
-            ConflictChoice::Overwrite => {
-                let _ = remove_path(&unit.dest);
-                to_copy.push(unit);
-            }
-            ConflictChoice::Skip => outcome.skipped.push(unit.display),
-            ConflictChoice::KeepBoth => {
-                let mut u = unit;
-                u.dest = unique_dest(&u.dest);
-                if let Some(new_name) = u.dest.file_name().map(|n| n.to_string_lossy().into_owned())
-                {
-                    u.display = new_name;
-                }
-                to_copy.push(u);
+    // Keep operations ordered: later keep-both decisions see earlier installed names.
+    let actions = units
+        .into_iter()
+        .map(|u| (u, None))
+        .chain(resolved.into_iter().map(|(u, c)| (u, Some(c))));
+    for (mut unit, choice) in actions {
+        if choice == Some(ConflictChoice::Skip) {
+            outcome.skipped.push(unit.display);
+            continue;
+        }
+        if choice == Some(ConflictChoice::KeepBoth) {
+            unit.dest = unique_dest(&unit.dest);
+            if let Some(name) = unit.dest.file_name() {
+                unit.display = name.to_string_lossy().into_owned();
             }
         }
-    }
-
-    for unit in to_copy {
-        match copy_unit(&unit) {
+        match install_transaction(&unit, choice == Some(ConflictChoice::Overwrite)) {
             Ok(()) => match unit.kind {
                 UnitKind::Script => outcome.installed_scripts.push(unit.display),
                 UnitKind::Plugin => {
@@ -148,20 +143,60 @@ pub fn execute(units: Vec<PlannedUnit>, resolved: Vec<(PlannedUnit, ConflictChoi
             Err(e) => outcome.failures.push((unit.display, e)),
         }
     }
-
     outcome
 }
 
-fn remove_path(p: &Path) -> std::io::Result<()> {
-    let meta = fs::symlink_metadata(p)?;
-    if meta.is_dir() {
-        fs::remove_dir_all(p)
-    } else {
-        fs::remove_file(p)
+/// Stage on the destination filesystem before touching the old item; rollback on failure.
+fn install_transaction(unit: &PlannedUnit, overwrite: bool) -> Result<(), String> {
+    let parent = unit.dest.parent().ok_or("目标没有父目录")?;
+    fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    let staging = tempfile::Builder::new()
+        .prefix(".cavalrykit-")
+        .tempdir_in(parent)
+        .map_err(|e| format!("创建暂存目录失败: {e}"))?;
+    let staged = staging.path().join("payload");
+    let mut copy = unit.clone();
+    copy.dest = staged.clone();
+    copy_unit(&copy)?;
+    // Recheck immediately before committing, including dangling symlinks.
+    let existing = fs::symlink_metadata(&unit.dest).ok();
+    if existing
+        .as_ref()
+        .is_some_and(|m| m.file_type().is_symlink())
+    {
+        return Err("拒绝覆盖符号链接目标".into());
     }
+    if existing.is_some() && !overwrite {
+        return Err("目标已被其他操作创建，请重新导入并处理冲突".into());
+    }
+    let backup = staging.path().join("previous");
+    if existing.is_some() {
+        fs::rename(&unit.dest, &backup)
+            .map_err(|e| format!("无法备份旧版本（可能正在使用）: {e}"))?;
+    }
+    if let Err(error) = fs::rename(&staged, &unit.dest) {
+        if existing.is_some() {
+            if let Err(restore) = fs::rename(&backup, &unit.dest) {
+                let recovery = staging.keep();
+                return Err(format!(
+                    "安装失败: {error}；自动恢复失败: {restore}；旧文件保留在 {}",
+                    recovery.join("previous").display()
+                ));
+            }
+        }
+        return Err(format!("安装失败，旧版本已保留: {error}"));
+    }
+    Ok(())
 }
 
 fn copy_unit(unit: &PlannedUnit) -> Result<(), String> {
+    if fs::symlink_metadata(&unit.source)
+        .map_err(|e| format!("源文件不可用: {e}"))?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("不安装符号链接，请导入原始文件".into());
+    }
     match unit.kind {
         UnitKind::Script => {
             if let Some(parent) = unit.dest.parent() {
@@ -177,13 +212,14 @@ fn copy_unit(unit: &PlannedUnit) -> Result<(), String> {
 
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| format!("创建插件目录失败: {e}"))?;
-    for entry in
-        fs::read_dir(src).map_err(|e| format!("读取插件目录失败: {e}"))?
-    {
+    for entry in fs::read_dir(src).map_err(|e| format!("读取插件目录失败: {e}"))? {
         let entry = entry.map_err(|e| e.to_string())?;
         let from = entry.path();
         let to = dst.join(entry.file_name());
         let meta = fs::symlink_metadata(&from).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink() {
+            return Err("插件含符号链接，已取消安装并保留旧版本".into());
+        }
         if meta.is_dir() {
             copy_dir_all(&from, &to)?;
         } else {
@@ -281,27 +317,36 @@ mod tests {
         fs::write(&src, b"new").unwrap();
 
         // 冲突 → 覆盖
-        let plan1 = plan(&[src.clone()], &paths);
+        let plan1 = plan(std::slice::from_ref(&src), &paths);
         assert_eq!(plan1.conflicts.len(), 1);
         assert!(plan1.units.is_empty());
         let c = plan1.conflicts[0].clone();
         let out = execute(vec![], vec![(c, ConflictChoice::Overwrite)]);
         assert!(out.installed_scripts.contains(&"old.jsc".to_string()));
-        assert_eq!(fs::read_to_string(paths.scripts.join("old.jsc")).unwrap(), "new");
+        assert_eq!(
+            fs::read_to_string(paths.scripts.join("old.jsc")).unwrap(),
+            "new"
+        );
 
         // 冲突 → 跳过
-        let plan2 = plan(&[src.clone()], &paths);
+        let plan2 = plan(std::slice::from_ref(&src), &paths);
         let c = plan2.conflicts[0].clone();
         let out2 = execute(plan2.units, vec![(c, ConflictChoice::Skip)]);
         assert_eq!(out2.skipped, vec!["old.jsc"]);
-        assert_eq!(fs::read_to_string(paths.scripts.join("old.jsc")).unwrap(), "new");
+        assert_eq!(
+            fs::read_to_string(paths.scripts.join("old.jsc")).unwrap(),
+            "new"
+        );
 
         // 冲突 → 保留两者
         let plan3 = plan(&[src], &paths);
         let c = plan3.conflicts[0].clone();
         let out3 = execute(plan3.units, vec![(c, ConflictChoice::KeepBoth)]);
         assert_eq!(out3.installed_scripts, vec!["old 2.jsc"]);
-        assert_eq!(fs::read_to_string(paths.scripts.join("old.jsc")).unwrap(), "new");
+        assert_eq!(
+            fs::read_to_string(paths.scripts.join("old.jsc")).unwrap(),
+            "new"
+        );
         assert_eq!(
             fs::read_to_string(paths.scripts.join("old 2.jsc")).unwrap(),
             "new"

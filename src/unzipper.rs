@@ -37,7 +37,9 @@ pub fn archive_kind(path: &Path) -> Option<ArchiveKind> {
 pub fn archive_stem(path: &Path) -> Option<String> {
     let name = path.file_name()?.to_str()?;
     let lower = name.to_ascii_lowercase();
-    for suf in [".tar.gz", ".tar.bz2", ".tgz", ".tbz2", ".zip", ".tar", ".7z"] {
+    for suf in [
+        ".tar.gz", ".tar.bz2", ".tgz", ".tbz2", ".zip", ".tar", ".7z",
+    ] {
         if lower.ends_with(suf) {
             return Some(name[..name.len() - suf.len()].to_string());
         }
@@ -175,13 +177,16 @@ fn sanitize(rel: &Path) -> Option<PathBuf> {
             _ => return None,
         }
     }
-    if out.as_os_str().is_empty() { None } else { Some(out) }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// 解压 zip 到 dest 目录。已存在的同名文件会被覆盖。
 pub fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
-    let file = File::open(zip_path)
-        .map_err(|e| format!("无法打开压缩包: {e}"))?;
+    let file = File::open(zip_path).map_err(|e| format!("无法打开压缩包: {e}"))?;
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("不是有效的 zip 文件: {e}"))?;
 
@@ -197,8 +202,7 @@ pub fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
         };
 
         if entry.is_dir() {
-            std::fs::create_dir_all(&out_path)
-                .map_err(|e| format!("创建目录失败: {e}"))?;
+            std::fs::create_dir_all(&out_path).map_err(|e| format!("创建目录失败: {e}"))?;
         } else {
             if let Some(parent) = out_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;

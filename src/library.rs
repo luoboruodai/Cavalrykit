@@ -12,6 +12,8 @@ pub struct ScriptEntry {
     /// 所在子目录（相对 Scripts 根），根目录下为 None
     pub group: Option<String>,
     pub path: PathBuf,
+    /// Normalized once while scanning; never lowercase the entire library per frame.
+    pub search_key: String,
 }
 
 #[derive(Debug, Clone)]
@@ -19,6 +21,8 @@ pub struct PluginEntry {
     pub name: String,
     pub author: Option<String>,
     pub path: PathBuf,
+    /// Normalized once while scanning; never lowercase the entire library per frame.
+    pub search_key: String,
 }
 
 #[derive(Debug, Default)]
@@ -31,17 +35,21 @@ pub struct Library {
 pub fn scan(paths: &CavalryPaths) -> Library {
     let mut lib = Library::default();
     if paths.scripts.is_dir() {
-        walk_scripts(&paths.scripts, &paths.scripts, &mut lib.scripts);
+        walk_scripts(&paths.scripts, &paths.scripts, &mut lib.scripts, 0);
     }
     if paths.plugins.is_dir() {
-        walk_plugins(&paths.plugins, &mut lib.plugins);
+        walk_plugins(&paths.plugins, &mut lib.plugins, 0);
     }
-    lib.scripts.sort_by(|a, b| a.group.cmp(&b.group).then(a.name.cmp(&b.name)));
+    lib.scripts
+        .sort_by(|a, b| a.group.cmp(&b.group).then(a.name.cmp(&b.name)));
     lib.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     lib
 }
 
-fn walk_scripts(dir: &Path, root: &Path, out: &mut Vec<ScriptEntry>) {
+fn walk_scripts(dir: &Path, root: &Path, out: &mut Vec<ScriptEntry>, depth: usize) {
+    if depth > 64 {
+        return;
+    }
     let Ok(rd) = fs::read_dir(dir) else { return };
     for entry in rd.filter_map(|e| e.ok()) {
         let p = entry.path();
@@ -50,17 +58,20 @@ fn walk_scripts(dir: &Path, root: &Path, out: &mut Vec<ScriptEntry>) {
         if crate::unzipper::is_junk_name(name) {
             continue;
         }
-        let Ok(meta) = fs::symlink_metadata(&p) else { continue };
+        let Ok(meta) = fs::symlink_metadata(&p) else {
+            continue;
+        };
         if meta.is_dir() {
-            walk_scripts(&p, root, out);
-        } else if is_script_file(&p) {
-            let group = p
+            walk_scripts(&p, root, out, depth + 1);
+        } else if meta.is_file() && is_script_file(&p) {
+            let group: Option<String> = p
                 .parent()
                 .and_then(|par| par.strip_prefix(root).ok())
                 .filter(|rel| !rel.as_os_str().is_empty())
                 .map(|rel| rel.to_string_lossy().into_owned());
             out.push(ScriptEntry {
                 name: name.to_string(),
+                search_key: format!("{name} {}", group.as_deref().unwrap_or("")).to_lowercase(),
                 group,
                 path: p,
             });
@@ -70,11 +81,14 @@ fn walk_scripts(dir: &Path, root: &Path, out: &mut Vec<ScriptEntry>) {
 
 /// 插件按「产品」列出：直接包含 definitions.json 的目录即一个产品，
 /// 命中后不再深入（Cavalry 允许插件任意嵌套打包）。
-fn walk_plugins(dir: &Path, out: &mut Vec<PluginEntry>) {
+fn walk_plugins(dir: &Path, out: &mut Vec<PluginEntry>, depth: usize) {
+    if depth > 64 {
+        return;
+    }
     let Ok(rd) = fs::read_dir(dir) else { return };
     for entry in rd.filter_map(|e| e.ok()) {
         let p = entry.path();
-        if !p.is_dir() {
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
             continue;
         }
         if crate::unzipper::is_junk_name(&entry.file_name().to_string_lossy()) {
@@ -82,20 +96,26 @@ fn walk_plugins(dir: &Path, out: &mut Vec<PluginEntry>) {
         }
         if p.join("definitions.json").is_file() {
             let name = entry.file_name().to_string_lossy().into_owned();
+            let author = plugin_author(&p);
             out.push(PluginEntry {
+                search_key: format!("{name} {}", author.as_deref().unwrap_or("")).to_lowercase(),
                 name,
-                author: plugin_author(&p),
+                author,
                 path: p,
             });
         } else {
-            walk_plugins(&p, out);
+            walk_plugins(&p, out, depth + 1);
         }
     }
 }
 
 /// 解析插件 definitions.json 中的 author 字段（容错：任何解析失败都返回 None）。
 pub fn plugin_author(dir: &Path) -> Option<String> {
-    let text = fs::read_to_string(dir.join("definitions.json")).ok()?;
+    let path = dir.join("definitions.json");
+    if fs::metadata(&path).ok()?.len() > 1024 * 1024 {
+        return None;
+    }
+    let text = fs::read_to_string(path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     v.get("author")?.as_str().map(|s| s.to_string())
 }
@@ -109,12 +129,12 @@ pub fn uninstall(paths: &CavalryPaths, target: &Path) -> Result<(), String> {
     let inside_scripts = paths
         .scripts
         .canonicalize()
-        .map(|s| t.starts_with(s))
+        .map(|s| t != s && t.starts_with(s))
         .unwrap_or(false);
     let inside_plugins = paths
         .plugins
         .canonicalize()
-        .map(|p| t.starts_with(p))
+        .map(|p| t != p && t.starts_with(p))
         .unwrap_or(false);
     if !inside_scripts && !inside_plugins {
         return Err("拒绝删除 Cavalry 目录之外的路径".to_string());
@@ -157,7 +177,11 @@ mod tests {
 
         let lib = scan(&paths);
         assert_eq!(lib.scripts.len(), 2);
-        let root_script = lib.scripts.iter().find(|s| s.name == "Renamer.jsc").unwrap();
+        let root_script = lib
+            .scripts
+            .iter()
+            .find(|s| s.name == "Renamer.jsc")
+            .unwrap();
         assert_eq!(root_script.group, None);
         let sub_script = lib.scripts.iter().find(|s| s.name == "bend.js").unwrap();
         assert_eq!(sub_script.group.as_deref(), Some("deformers"));

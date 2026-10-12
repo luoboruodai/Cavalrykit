@@ -6,52 +6,40 @@ pub mod library;
 pub mod paths;
 pub mod ui;
 pub mod unzipper;
+pub mod worker;
 
 use std::path::PathBuf;
 
 /// 应用启动（原 main 逻辑，便于二进制入口与测试复用）。
 pub fn run() -> eframe::Result<()> {
-    // 日志默认写到系统临时目录的 cavalrykit.log，便于排查启动问题
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-    if std::env::var("RUST_LOG_STYLE").is_err() {
-        std::env::set_var("RUST_LOG_STYLE", "always");
-    }
-    env_logger::init();
+    // Log to stderr only when requested; never create logs containing imported private paths.
+    let _ = env_logger::try_init();
+    paths::setup_app_identity();
 
     // 通过「打开方式」/命令行传入的文件路径，进入初始安装队列
-    let initial: Vec<PathBuf> = std::env::args()
-        .skip(1)
-        .map(PathBuf::from)
-        .filter(|p| p.exists())
-        .collect();
-
-    // 验证用:CAVALRYKIT_VERIFY_SIZE="WxH" 覆盖窗口尺寸并隐藏标题栏;
-    // 内容按 w/880 等比 zoom,让 1536 捕获与 comp 同尺度(impeccable hero 门在 comp 像素上对比)
-    let (w, h, verify) = std::env::var("CAVALRYKIT_VERIFY_SIZE")
-        .ok()
-        .and_then(|s| {
-            let (a, b) = s.split_once('x')?;
-            Some((a.parse::<f32>().ok()?, b.parse::<f32>().ok()?))
-        })
-        .map(|(a, b)| (a, b, true))
-        .unwrap_or((880.0, 660.0, false));
-    let verify_zoom = if verify { w / 880.0 } else { 1.0 };
-
-    let mut vp = egui::ViewportBuilder::default()
-        .with_title("CavalryKit")
-        .with_titlebar_shown(!verify)
-        .with_inner_size([w, h])
-        .with_min_inner_size([740.0, 540.0])
-        .with_icon(ui::icon::window_icon());
-    if verify {
-        // 验证时固定到主屏左上角(多显示器下默认落点可能在副屏顶部被系统关掉)
-        vp = vp.with_position([1560.0, 28.0]);
-    }
+    let initial: Vec<PathBuf> = std::env::args().skip(1).map(PathBuf::from).collect();
 
     let options = eframe::NativeOptions {
-        viewport: vp,
+        viewport: egui::ViewportBuilder::default()
+            .with_title(concat!("CavalryKit ", env!("CARGO_PKG_VERSION")))
+            .with_app_id("com.cavalrykit.app")
+            .with_inner_size([960.0, 680.0])
+            .with_min_inner_size([800.0, 560.0])
+            .with_decorations(true)
+            .with_transparent(false)
+            .with_icon(ui::icon::window_icon()),
+        // Use native Metal / DX12/Vulkan rather than relying on Windows OpenGL drivers.
+        // Keep an explicit compatibility escape hatch for older graphics drivers.
+        renderer: if std::env::var("CAVALRYKIT_RENDERER").as_deref() == Ok("glow") {
+            eframe::Renderer::Glow
+        } else {
+            eframe::Renderer::Wgpu
+        },
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            desired_maximum_frame_latency: Some(1),
+            ..Default::default()
+        },
+        vsync: true,
         ..Default::default()
     };
 
@@ -59,11 +47,11 @@ pub fn run() -> eframe::Result<()> {
         "CavalryKit",
         options,
         Box::new(move |cc| {
-            // 验证缩放仅验证时生效;正常启动显式复位,避免持久化泄漏(egui memory 会记住 zoom)
-            cc.egui_ctx.set_zoom_factor(verify_zoom);
+            // Reset UI zoom; physical scaling remains managed by the native per-monitor DPI.
+            cc.egui_ctx.set_zoom_factor(1.0);
             ui::fonts::setup(&cc.egui_ctx);
             ui::theme::apply(&cc.egui_ctx);
-            Ok(Box::new(ui::app::CavalryKitApp::new(initial)))
+            Ok(Box::new(ui::app::CavalryKitApp::new(&cc.egui_ctx, initial)))
         }),
     )
 }

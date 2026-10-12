@@ -12,10 +12,7 @@ use cavalrykit::paths::CavalryPaths;
 use cavalrykit::unzipper::extract_zip;
 
 fn tmpdir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "cavalrykit-func-{tag}-{}",
-        std::process::id()
-    ));
+    let d = std::env::temp_dir().join(format!("cavalrykit-func-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
     d
@@ -42,7 +39,10 @@ fn install(inputs: &[PathBuf], paths: &CavalryPaths) -> installer::Outcome {
     assert!(
         plan.conflicts.is_empty(),
         "本用例不应有冲突: {:?}",
-        plan.conflicts.iter().map(|c| &c.display).collect::<Vec<_>>()
+        plan.conflicts
+            .iter()
+            .map(|c| &c.display)
+            .collect::<Vec<_>>()
     );
     assert!(
         plan.failures.is_empty(),
@@ -117,7 +117,10 @@ fn script_zip_wrapper_and_flat() {
     assert!(paths.scripts.join("solo.jsc").is_file());
     assert!(!paths.scripts.join("repo-main").exists(), "包裹壳不应带入");
     assert!(!paths.scripts.join("README.md").exists());
-    assert!(!paths.scripts.join("note.txt").exists(), "非脚本文件不应安装");
+    assert!(
+        !paths.scripts.join("note.txt").exists(),
+        "非脚本文件不应安装"
+    );
 
     // 扫描:子目录脚本带组名
     let lib = library::scan(&paths);
@@ -163,7 +166,10 @@ fn plugin_folder_and_zip_roundtrip() {
             ("Deep-1.0/", b""),
             ("Deep-1.0/dist/", b""),
             ("Deep-1.0/dist/Deep Kit/", b""),
-            ("Deep-1.0/dist/Deep Kit/definitions.json", br#"{"author":"deep"}"#),
+            (
+                "Deep-1.0/dist/Deep Kit/definitions.json",
+                br#"{"author":"deep"}"#,
+            ),
         ],
     );
 
@@ -173,7 +179,10 @@ fn plugin_folder_and_zip_roundtrip() {
 
     // 落点正确:Third-Party/Plugins/<产品目录>
     assert!(paths.plugins.join("Field Kit/definitions.json").is_file());
-    assert!(paths.plugins.join("Field Kit/glow.sksl").is_file(), "插件资源要完整");
+    assert!(
+        paths.plugins.join("Field Kit/glow.sksl").is_file(),
+        "插件资源要完整"
+    );
     assert!(paths.plugins.join("Noise Pack/noise.sksl").is_file());
     assert!(paths.plugins.join("Deep Kit/definitions.json").is_file());
     assert!(!paths.plugins.join("__MACOSX").exists());
@@ -227,17 +236,33 @@ fn conflicts_all_strategies() {
     assert_eq!(out.installed_scripts, vec!["tool 2.jsc"]);
     assert_eq!(out.installed_plugins, vec!["Kit"]);
 
-    assert_eq!(fs::read_to_string(paths.scripts.join("tool.jsc")).unwrap(), "old-script");
-    assert_eq!(fs::read_to_string(paths.scripts.join("tool 2.jsc")).unwrap(), "new-script");
+    assert_eq!(
+        fs::read_to_string(paths.scripts.join("tool.jsc")).unwrap(),
+        "old-script"
+    );
+    assert_eq!(
+        fs::read_to_string(paths.scripts.join("tool 2.jsc")).unwrap(),
+        "new-script"
+    );
     assert!(paths.plugins.join("Kit/definitions.json").is_file());
     let lib = library::scan(&paths);
-    assert_eq!(lib.plugins[0].author.as_deref(), Some("new"), "覆盖后作者应为新版");
+    assert_eq!(
+        lib.plugins[0].author.as_deref(),
+        Some("new"),
+        "覆盖后作者应为新版"
+    );
 
     // 再撞一次选「跳过」:内容不变
     let plan2 = installer::plan(&[new_script], &paths);
-    let out2 = installer::execute(plan2.units, vec![(plan2.conflicts[0].clone(), ConflictChoice::Skip)]);
+    let out2 = installer::execute(
+        plan2.units,
+        vec![(plan2.conflicts[0].clone(), ConflictChoice::Skip)],
+    );
     assert_eq!(out2.skipped, vec!["tool.jsc"]);
-    assert_eq!(fs::read_to_string(paths.scripts.join("tool.jsc")).unwrap(), "old-script");
+    assert_eq!(
+        fs::read_to_string(paths.scripts.join("tool.jsc")).unwrap(),
+        "old-script"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -298,7 +323,10 @@ fn mixed_zip_installs_both() {
             ("bundle/tools/useful.jsc", b"//tool"),
             ("bundle/MyPlugin/", b""),
             ("bundle/MyPlugin/definitions.json", br#"{"author":"m"}"#),
-            ("bundle/MyPlugin/helper.js", "//插件内部资源,不当脚本".as_bytes()),
+            (
+                "bundle/MyPlugin/helper.js",
+                "//插件内部资源,不当脚本".as_bytes(),
+            ),
         ],
     );
     let plan = installer::plan(std::slice::from_ref(&z), &paths);
@@ -408,11 +436,19 @@ fn real_env_roundtrip() {
     let mid = library::scan(&paths);
     assert_eq!(mid.scripts.len(), before.scripts.len() + 1);
     assert_eq!(mid.plugins.len(), before.plugins.len() + 1);
-    let plug = mid.plugins.iter().find(|p| p.name == format!("{tag} Kit")).unwrap();
+    let plug = mid
+        .plugins
+        .iter()
+        .find(|p| p.name == format!("{tag} Kit"))
+        .unwrap();
     assert_eq!(plug.author.as_deref(), Some("cavalrykit-test"));
 
     // 8c. 真实卸载(进废纸篓)
-    let s = mid.scripts.iter().find(|s| s.name == format!("{tag}.jsc")).unwrap();
+    let s = mid
+        .scripts
+        .iter()
+        .find(|s| s.name == format!("{tag}.jsc"))
+        .unwrap();
     library::uninstall(&paths, &s.path).unwrap();
     library::uninstall(&paths, &plug.path).unwrap();
 
@@ -436,7 +472,8 @@ fn make_tar_like(path: &Path, entries: &[(&str, &[u8])], enc: &str) {
                 h.set_entry_type(tar::EntryType::Directory);
                 h.set_size(0);
                 h.set_cksum();
-                b.append_data(&mut h, name.trim_end_matches('/'), &[][..]).unwrap();
+                b.append_data(&mut h, name.trim_end_matches('/'), &[][..])
+                    .unwrap();
             } else {
                 let mut h = tar::Header::new_gnu();
                 h.set_size(data.len() as u64);
@@ -484,12 +521,24 @@ fn assert_script_archive(dir: &Path, archive: &Path, tag: &str) {
     let paths = CavalryPaths::from_base(&dir.join(format!("Cavalry-{tag}")));
     let out = install(std::slice::from_ref(&archive.to_path_buf()), &paths);
     assert_eq!(out.installed_scripts.len(), 2, "{tag} 应装 2 个脚本");
-    assert!(paths.scripts.join("kit/a.jsc").is_file(), "{tag}: 包裹壳未剥或结构丢失");
+    assert!(
+        paths.scripts.join("kit/a.jsc").is_file(),
+        "{tag}: 包裹壳未剥或结构丢失"
+    );
     assert!(paths.scripts.join("b.js").is_file(), "{tag}");
-    assert!(!paths.scripts.join("wrap").exists(), "{tag}: 包裹壳不应带入");
-    assert!(!paths.scripts.join("README.md").exists(), "{tag}: 文档不应安装");
+    assert!(
+        !paths.scripts.join("wrap").exists(),
+        "{tag}: 包裹壳不应带入"
+    );
+    assert!(
+        !paths.scripts.join("README.md").exists(),
+        "{tag}: 文档不应安装"
+    );
     // macOS 垃圾被过滤
-    assert!(!paths.scripts.join("kit/._a.jsc").exists(), "{tag}: 垃圾泄漏");
+    assert!(
+        !paths.scripts.join("kit/._a.jsc").exists(),
+        "{tag}: 垃圾泄漏"
+    );
     assert!(!paths.scripts.join("__MACOSX").exists(), "{tag}: 垃圾泄漏");
 }
 
@@ -499,7 +548,10 @@ fn assert_plugin_archive(dir: &Path, archive: &Path, tag: &str) {
     let out = install(std::slice::from_ref(&archive.to_path_buf()), &paths);
     assert_eq!(out.installed_plugins, vec!["Prod".to_string()], "{tag}");
     assert!(out.restart_hint, "{tag}");
-    assert!(paths.plugins.join("Prod/definitions.json").is_file(), "{tag}");
+    assert!(
+        paths.plugins.join("Prod/definitions.json").is_file(),
+        "{tag}"
+    );
     assert!(paths.plugins.join("Prod/res.sksl").is_file(), "{tag}");
     let lib = library::scan(&paths);
     assert_eq!(lib.plugins[0].author.as_deref(), Some("fmt"), "{tag}");
@@ -527,17 +579,29 @@ const PLUGIN_TREE: &[(&str, &[u8])] = &[
 fn compat_tar_family_and_7z() {
     let dir = tmpdir("formats");
     let cases: [(&str, &str); 6] = [
-        ("tar", ""), ("tar.gz", "gz"), ("tgz", "gz"),
-        ("tar.bz2", "bz2"), ("tbz2", "bz2"), ("7z", "7z"),
+        ("tar", ""),
+        ("tar.gz", "gz"),
+        ("tgz", "gz"),
+        ("tar.bz2", "bz2"),
+        ("tbz2", "bz2"),
+        ("7z", "7z"),
     ];
     for (ext, enc) in cases {
         // 脚本包
         let s = dir.join(format!("scripts-{ext}.{ext}"));
-        if enc == "7z" { make_7z(&s, SCRIPT_TREE) } else { make_tar_like(&s, SCRIPT_TREE, enc) }
+        if enc == "7z" {
+            make_7z(&s, SCRIPT_TREE)
+        } else {
+            make_tar_like(&s, SCRIPT_TREE, enc)
+        }
         assert_script_archive(&dir, &s, &format!("scripts-{ext}"));
         // 插件包
         let p = dir.join(format!("plugin.{ext}"));
-        if enc == "7z" { make_7z(&p, PLUGIN_TREE) } else { make_tar_like(&p, PLUGIN_TREE, enc) }
+        if enc == "7z" {
+            make_7z(&p, PLUGIN_TREE)
+        } else {
+            make_tar_like(&p, PLUGIN_TREE, enc)
+        }
         assert_plugin_archive(&dir, &p, &format!("plugin-{ext}"));
     }
     let _ = fs::remove_dir_all(&dir);
@@ -549,7 +613,13 @@ fn compat_7z_root_definitions_named_by_archive() {
     let dir = tmpdir("7zroot");
     let paths = CavalryPaths::from_base(&dir.join("Cavalry"));
     let z = dir.join("Seven Kit.7z");
-    make_7z(&z, &[("definitions.json", br#"{"author":"s7"}"#), ("res.sksl", b"s")]);
+    make_7z(
+        &z,
+        &[
+            ("definitions.json", br#"{"author":"s7"}"#),
+            ("res.sksl", b"s"),
+        ],
+    );
     let out = install(std::slice::from_ref(&z), &paths);
     assert_eq!(out.installed_plugins, vec!["Seven Kit".to_string()]);
     assert!(paths.plugins.join("Seven Kit/definitions.json").is_file());

@@ -7,8 +7,8 @@
 //!          无渐变无硬影;主色紫 #6750A4 只作 CTA/选中。
 
 use egui::{
-    Align2, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Pos2, Response, RichText,
-    Sense, Stroke, StrokeKind, Ui, Vec2,
+    Align2, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Pos2, Response, RichText, Sense,
+    Stroke, StrokeKind, Ui, Vec2,
 };
 
 use super::fonts::{FAMILY_MEDIUM, FAMILY_SEMIBOLD};
@@ -230,10 +230,14 @@ pub fn button(ui: &mut Ui, text: impl Into<String>, variant: Btn, height: f32) -
         Btn::Outlined => (PRIMARY, font_medium(LABEL_LG)),
         Btn::Text(c) => (c, font_medium(LABEL_LG)),
     };
-    let galley = ui.painter().layout_no_wrap(text.into(), font, text_color);
+    let text = text.into();
+    let galley = ui.painter().layout_no_wrap(text.clone(), font, text_color);
     let pad_x = 20.0_f32;
     let size = Vec2::new(galley.size().x + pad_x * 2.0, height);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &text)
+    });
     point_hand(ui, response.hovered());
     let t = interact_t(ui, response.id, response.hovered());
     let pressed = response.hovered() && ui.ctx().input(|i| i.pointer.primary_down());
@@ -263,10 +267,7 @@ pub fn button(ui: &mut Ui, text: impl Into<String>, variant: Btn, height: f32) -
         );
     }
     painter.galley(
-        Pos2::new(
-            rect.min.x + pad_x,
-            rect.center().y - galley.size().y / 2.0,
-        ),
+        Pos2::new(rect.min.x + pad_x, rect.center().y - galley.size().y / 2.0),
         galley,
         text_color,
     );
@@ -277,14 +278,11 @@ pub fn button(ui: &mut Ui, text: impl Into<String>, variant: Btn, height: f32) -
 
 /// outlined 状态 chip:圆点 + 文字,圆角 8
 pub fn status_chip(ui: &mut Ui, running: bool, text: impl Into<String>) {
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text.into(), font_medium(LABEL_MD), ON_SURFACE_VARIANT);
+    let galley =
+        ui.painter()
+            .layout_no_wrap(text.into(), font_medium(LABEL_MD), ON_SURFACE_VARIANT);
     let (pad_x, gap, dot_r, h) = (12.0_f32, 8.0_f32, 5.0_f32, 32.0_f32);
-    let size = Vec2::new(
-        galley.size().x + pad_x * 2.0 + gap + dot_r * 2.0,
-        h,
-    );
+    let size = Vec2::new(galley.size().x + pad_x * 2.0 + gap + dot_r * 2.0, h);
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect(
@@ -318,7 +316,7 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize) -> usize {
     let pad_x = 22.0_f32;
     let track_r = RADIUS_MD;
     let pill_inset = 4.0_f32; // 紫丸相对槽位四边均匀内缩(嵌套圆角:8+4=12,两轴一致)
-    // 等宽段:取最宽标签统一槽宽
+                              // 等宽段:取最宽标签统一槽宽
     let mut text_w = 0.0_f32;
     for l in labels {
         let g = ui
@@ -342,9 +340,9 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize) -> usize {
 
     let mut new_selected = selected;
     // 滑动紫丸:animate_value 平滑过槽(选中切换动效)
-    let anim = ui
-        .ctx()
-        .animate_value_with_time(egui::Id::new("ck-seg-slide"), selected as f32, 0.22);
+    let anim =
+        ui.ctx()
+            .animate_value_with_time(egui::Id::new("ck-seg-slide"), selected as f32, 0.22);
     let idx_f = anim;
     let i0 = idx_f.floor() as usize;
     let i1 = (i0 + 1).min(labels.len() - 1);
@@ -369,6 +367,14 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize) -> usize {
         let resp = ui.interact(seg, egui::Id::new(("ck-seg", *l)), Sense::click());
         point_hand(ui, resp.hovered());
         let active = i == selected;
+        resp.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::SelectableLabel,
+                ui.is_enabled(),
+                active,
+                *l,
+            )
+        });
         // 悬停/按下罩(未选中项,与紫丸同内缩同圆角)
         let t = interact_t(ui, resp.id, resp.hovered());
         if !active && t > 0.0 {
@@ -379,9 +385,9 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize) -> usize {
             );
         }
         // 文字:选中白(随滑动淡入),未选中 variant 灰(悬停提亮)
-        let sel_t = ui
-            .ctx()
-            .animate_bool_with_time(egui::Id::new(("ck-seg-sel", *l)), active, 0.22);
+        let sel_t =
+            ui.ctx()
+                .animate_bool_with_time(egui::Id::new(("ck-seg-sel", *l)), active, 0.22);
         let mut col = lerp_color(ON_SURFACE_VARIANT, ON_PRIMARY, sel_t);
         if !active && t > 0.0 {
             col = lerp_color(col, ON_SURFACE, t * 0.7);
@@ -390,7 +396,10 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize) -> usize {
             .painter()
             .layout_no_wrap((*l).to_owned(), font_medium(LABEL_LG), col);
         painter.galley(
-            Pos2::new(seg.center().x - g.size().x / 2.0, seg.center().y - g.size().y / 2.0),
+            Pos2::new(
+                seg.center().x - g.size().x / 2.0,
+                seg.center().y - g.size().y / 2.0,
+            ),
             g,
             col,
         );
@@ -403,14 +412,11 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize) -> usize {
 
 /// 紧凑状态 chip(品牌行同行):小点 + 小字,满丸描边
 pub fn status_chip_compact(ui: &mut Ui, running: bool, text: impl Into<String>) {
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text.into(), font_medium(LABEL_SM), ON_SURFACE_VARIANT);
+    let galley =
+        ui.painter()
+            .layout_no_wrap(text.into(), font_medium(LABEL_SM), ON_SURFACE_VARIANT);
     let (pad_x, gap, dot_r, h) = (8.0_f32, 5.0_f32, 3.5_f32, 22.0_f32);
-    let size = Vec2::new(
-        galley.size().x + pad_x * 2.0 + gap + dot_r * 2.0,
-        h,
-    );
+    let size = Vec2::new(galley.size().x + pad_x * 2.0 + gap + dot_r * 2.0, h);
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect(
@@ -425,7 +431,11 @@ pub fn status_chip_compact(ui: &mut Ui, running: bool, text: impl Into<String>) 
     } else {
         OUTLINE
     };
-    painter.circle_filled(Pos2::new(rect.min.x + pad_x + dot_r, rect.center().y), dot_r, dot);
+    painter.circle_filled(
+        Pos2::new(rect.min.x + pad_x + dot_r, rect.center().y),
+        dot_r,
+        dot,
+    );
     painter.galley(
         Pos2::new(
             rect.min.x + pad_x + dot_r * 2.0 + gap,
@@ -474,10 +484,7 @@ pub fn search_input(ui: &mut Ui, text: &mut String, width: f32) -> Response {
     let stroke = if hot || hov_t > 0.5 {
         Stroke::new(2.0_f32, PRIMARY)
     } else {
-        Stroke::new(
-            lerp_f(1.0, 2.0, hov_t),
-            lerp_color(OUTLINE, PRIMARY, hov_t),
-        )
+        Stroke::new(lerp_f(1.0, 2.0, hov_t), lerp_color(OUTLINE, PRIMARY, hov_t))
     };
     painter.rect(
         rect,
@@ -570,16 +577,48 @@ pub fn dashed_rect(painter: &egui::Painter, rect: egui::Rect, radius: u8, color:
         }
     };
     let r = rect.shrink(4.0); // 内缩,圆角忽略(虚线感已足)
-    draw_dashes(Pos2::new(r.min.x + radius as f32, r.min.y), Pos2::new(r.max.x - radius as f32, r.min.y));
-    draw_dashes(Pos2::new(r.max.x, r.min.y + radius as f32), Pos2::new(r.max.x, r.max.y - radius as f32));
-    draw_dashes(Pos2::new(r.max.x - radius as f32, r.max.y), Pos2::new(r.min.x + radius as f32, r.max.y));
-    draw_dashes(Pos2::new(r.min.x, r.max.y - radius as f32), Pos2::new(r.min.x, r.min.y + radius as f32));
+    draw_dashes(
+        Pos2::new(r.min.x + radius as f32, r.min.y),
+        Pos2::new(r.max.x - radius as f32, r.min.y),
+    );
+    draw_dashes(
+        Pos2::new(r.max.x, r.min.y + radius as f32),
+        Pos2::new(r.max.x, r.max.y - radius as f32),
+    );
+    draw_dashes(
+        Pos2::new(r.max.x - radius as f32, r.max.y),
+        Pos2::new(r.min.x + radius as f32, r.max.y),
+    );
+    draw_dashes(
+        Pos2::new(r.min.x, r.max.y - radius as f32),
+        Pos2::new(r.min.x, r.min.y + radius as f32),
+    );
     // 四角用圆弧衔接
     for (cx, cy, a0, a1) in [
-        (r.min.x + radius as f32, r.min.y + radius as f32, 180.0_f32, 270.0_f32),
-        (r.max.x - radius as f32, r.min.y + radius as f32, 270.0_f32, 360.0_f32),
-        (r.max.x - radius as f32, r.max.y - radius as f32, 0.0_f32, 90.0_f32),
-        (r.min.x + radius as f32, r.max.y - radius as f32, 90.0_f32, 180.0_f32),
+        (
+            r.min.x + radius as f32,
+            r.min.y + radius as f32,
+            180.0_f32,
+            270.0_f32,
+        ),
+        (
+            r.max.x - radius as f32,
+            r.min.y + radius as f32,
+            270.0_f32,
+            360.0_f32,
+        ),
+        (
+            r.max.x - radius as f32,
+            r.max.y - radius as f32,
+            0.0_f32,
+            90.0_f32,
+        ),
+        (
+            r.min.x + radius as f32,
+            r.max.y - radius as f32,
+            90.0_f32,
+            180.0_f32,
+        ),
     ] {
         let n = 6;
         let pts: Vec<Pos2> = (0..=n)
@@ -596,5 +635,6 @@ pub fn dashed_rect(painter: &egui::Painter, rect: egui::Rect, radius: u8, color:
 
 /// 指针是否在 rect 上(自绘框 hover 检测用)
 fn rect_contains_pointer(ui: &Ui, rect: egui::Rect) -> bool {
-    ui.ctx().input(|i| i.pointer.latest_pos().map_or(false, |p| rect.contains(p)))
+    ui.ctx()
+        .input(|i| i.pointer.latest_pos().is_some_and(|p| rect.contains(p)))
 }

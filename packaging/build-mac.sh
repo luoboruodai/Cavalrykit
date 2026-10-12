@@ -1,51 +1,35 @@
 #!/bin/bash
-# 构建 macOS 应用 CavalryKit.app
-# 用法: packaging/build-mac.sh [--install]
-#   --install 构建成功后拷贝到 /Applications
+# Build a versioned DMG and an ad-hoc signed app. Does not alter installed apps.
 set -euo pipefail
-
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
-
-APP_NAME="CavalryKit"
-APP_DIR="$APP_NAME.app"
-
-echo "==> 生成图标（若需要）"
-if [ ! -f assets/icon.png ]; then
-    cargo run --quiet --example gen_icon
-fi
-if [ ! -f assets/icon.icns ]; then
-    ICONSET="$(mktemp -d)/icon.iconset"
-    mkdir -p "$ICONSET"
-    for size in 16 32 64 128 256 512; do
-        sips -z $size $size assets/icon.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    done
-    for size in 32 64 256 512; do
-        sips -z $size $size assets/icon.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-    done
-    iconutil -c icns "$ICONSET" -o assets/icon.icns
-    echo "    已生成 assets/icon.icns"
-fi
-
-echo "==> 编译 release"
-cargo build --release
-
-echo "==> 组装 $APP_DIR"
-rm -rf "$APP_DIR"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-cp target/release/cavalrykit "$APP_DIR/Contents/MacOS/$APP_NAME"
-cp packaging/Info.plist "$APP_DIR/Contents/Info.plist"
-cp assets/icon.icns "$APP_DIR/Contents/Resources/icon.icns"
-chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
-
-echo "==> ad-hoc 签名"
-codesign --force --sign - "$APP_DIR"
-
-echo "==> 完成: $(pwd)/$APP_DIR"
-
-if [ "${1:-}" = "--install" ]; then
-    echo "==> 拷贝到 /Applications"
-    rm -rf "/Applications/$APP_DIR"
-    cp -R "$APP_DIR" "/Applications/$APP_DIR"
-    echo "==> 已安装到 /Applications/$APP_DIR"
-fi
+export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$PWD=/build/cavalrykit"$'\x1f'"--remap-path-prefix=$HOME=/build/home"
+VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+ARCH="$(uname -m)"
+[ "$ARCH" = "aarch64" ] && ARCH="arm64"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+cargo build --release --locked
+# Always regenerate ICNS from the checked-in PNG; no stale icon cache in packaging.
+ICONSET="$WORK/icon.iconset"
+mkdir -p "$ICONSET"
+for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" assets/icon.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    double=$((size * 2))
+    sips -z "$double" "$double" assets/icon.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+done
+APP="$WORK/dmg/CavalryKit.app"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" dist
+cp target/release/cavalrykit "$APP/Contents/MacOS/CavalryKit"
+cp packaging/Info.plist "$APP/Contents/Info.plist"
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/icon.icns"
+chmod +x "$APP/Contents/MacOS/CavalryKit"
+codesign --force --sign - "$APP"
+codesign --verify --deep --strict "$APP"
+plutil -lint "$APP/Contents/Info.plist"
+if [ -e dist/CavalryKit.app ]; then mv dist/CavalryKit.app "$WORK/previous-build.app"; fi
+ditto "$APP" dist/CavalryKit.app
+ln -s /Applications "$WORK/dmg/Applications"
+hdiutil create -quiet -volname "CavalryKit $VERSION" -srcfolder "$WORK/dmg" -ov -format UDZO "dist/CavalryKit-$VERSION-mac-$ARCH.dmg"
+shasum -a 256 "dist/CavalryKit-$VERSION-mac-$ARCH.dmg"
+echo "Build complete. To upgrade, quit CavalryKit and replace the existing app in Applications."

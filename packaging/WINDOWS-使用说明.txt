@@ -1,0 +1,23 @@
+CavalryKit 0.1.1 — Windows x64
+
+推荐安装 / 更新：
+1. 完整解压 ZIP；不要直接从压缩包里运行。
+2. 关闭所有 CavalryKit 窗口，再双击 Install-CavalryKit.cmd。
+3. 固定安装于 %LOCALAPPDATA%\Programs\CavalryKit\CavalryKit.exe。
+4. 以后始终使用桌面或开始菜单的 CavalryKit 快捷方式。
+   快捷方式的图标指向 EXE 内嵌资源，不依赖导入脚本的位置。
+5. 安装器会原位更新这一固定路径，并以 ZIP 保留上一个版本的恢复副本。
+   其他位置手动解压的旧便携版不会被擅自删除，请自行删除或归档。
+   已固定到任务栏的旧图标请取消固定，再从新的快捷方式重新固定。
+
+使用：拖入 .js/.jsx/.jsc 或受支持压缩包；冲突时选择覆盖/保留两者/跳过。
+导入结果以独立弹窗展示；插件需重启 Cavalry。卸载条目会进入回收站。
+应用使用 Windows 原生窗口边框/标题栏，拖动应从系统标题栏操作。
+
+兼容模式：若旧显卡驱动无法初始化默认渲染器，在命令行运行：
+  set CAVALRYKIT_RENDERER=glow
+  CavalryKit.exe
+默认渲染器和兼容模式都建议安装最新的显卡驱动。
+
+本版本未购买代码签名证书，可能触发 SmartScreen 提示；不会禁用系统保护。
+验证范围请参阅仓库 RELEASE_NOTES.md。交叉编译不代表 Windows 实机验证。

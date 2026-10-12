@@ -1,6 +1,6 @@
 //! 窗口图标：从打包进二进制的 PNG 解码为 egui IconData。
 
-/// 512x512 应用图标（assets/icon.png，由 examples/gen_icon.rs 生成）。
+/// 应用图标（assets/icon.png，由提供的 assets/icon.ico 转换）。
 pub fn window_icon() -> egui::IconData {
     const PNG: &[u8] = include_bytes!("../../assets/icon.png");
     match image::load_from_memory(PNG) {

@@ -49,11 +49,55 @@ pub fn is_cavalry_running() -> bool {
 
 #[cfg(target_os = "windows")]
 pub fn is_cavalry_running() -> bool {
-    Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq Cavalry.exe", "/NH"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("Cavalry.exe"))
-        .unwrap_or(false)
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    // Native enumeration: no tasklist subprocess, hidden console, or UI-thread wait.
+    // SAFETY: the snapshot is checked and closed on every path; dwSize is initialized.
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return false;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut more = Process32FirstW(snapshot, &mut entry);
+        let mut found = false;
+        while more != 0 {
+            let len = entry
+                .szExeFile
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(entry.szExeFile.len());
+            if String::from_utf16_lossy(&entry.szExeFile[..len]).eq_ignore_ascii_case("Cavalry.exe")
+            {
+                found = true;
+                break;
+            }
+            more = Process32NextW(snapshot, &mut entry);
+        }
+        CloseHandle(snapshot);
+        found
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub fn is_cavalry_running() -> bool {
+    false
+}
+
+/// Stable taskbar identity, independent of imported script paths or working directory.
+pub fn setup_app_identity() {
+    #[cfg(target_os = "windows")]
+    {
+        let id: Vec<u16> = "com.cavalrykit.app\0".encode_utf16().collect();
+        // SAFETY: id is a valid, null-terminated UTF-16 string for the duration of the call.
+        unsafe {
+            windows_sys::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(id.as_ptr());
+        }
+    }
 }
 
 /// 在文件管理器中定位并选中该文件/文件夹。

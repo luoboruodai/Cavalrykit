@@ -86,12 +86,12 @@ fn inspect_archive(
     paths: &CavalryPaths,
 ) -> Result<Vec<PlannedUnit>, String> {
     let stem = unzipper::archive_stem(archive_path).unwrap_or_else(|| "archive".into());
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let root = temp.join(format!("{stem}-{stamp}"));
-    fs::create_dir_all(&root).map_err(|e| format!("创建临时目录失败: {e}"))?;
+    // Same-named archives imported in one batch must never share an extraction root.
+    let root = tempfile::Builder::new()
+        .prefix("archive-")
+        .tempdir_in(temp)
+        .map_err(|e| format!("创建临时目录失败: {e}"))?
+        .keep();
     unzipper::extract_archive(archive_path, &root)?;
 
     let mut units: Vec<PlannedUnit> = Vec::new();
@@ -136,7 +136,7 @@ fn effective_root(root: &Path) -> PathBuf {
         .map(|rd| {
             rd.filter_map(|e| e.ok())
                 .map(|e| e.path())
-                .filter(|p| !is_junk_name(&p.file_name().and_then(|n| n.to_str()).unwrap_or("")))
+                .filter(|p| !is_junk_name(p.file_name().and_then(|n| n.to_str()).unwrap_or("")))
                 .collect()
         })
         .unwrap_or_default();
@@ -164,7 +164,9 @@ fn collect_scripts_under(
         if is_junk_name(name) {
             continue;
         }
-        let Ok(meta) = fs::symlink_metadata(&p) else { continue };
+        let Ok(meta) = fs::symlink_metadata(&p) else {
+            continue;
+        };
         if meta.is_dir() {
             if exclude.iter().any(|ex| p.starts_with(ex)) {
                 continue;
@@ -188,7 +190,9 @@ fn find_plugin_dirs(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = fs::read_dir(dir) else { return };
     for entry in rd.filter_map(|e| e.ok()) {
         let p = entry.path();
-        let Ok(meta) = fs::symlink_metadata(&p) else { continue };
+        let Ok(meta) = fs::symlink_metadata(&p) else {
+            continue;
+        };
         if !meta.is_dir() {
             continue;
         }
@@ -319,7 +323,7 @@ mod tests {
         let dir = tmpdir("badzip");
         let paths = CavalryPaths::from_base(&dir.join("Cavalry"));
         let z = dir.join("photos.zip");
-        make_zip(&z, &[ ("img/cat.png", b"png") ]);
+        make_zip(&z, &[("img/cat.png", b"png")]);
         let tmp = dir.join("tmp");
         fs::create_dir_all(&tmp).unwrap();
         let r = inspect(&z, &tmp, &paths);

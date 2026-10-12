@@ -4,11 +4,11 @@
 
 ## Platform
 
-macos(native 桌面应用,Rust + egui,非 web)
+macOS / Windows（native 桌面应用，Rust + egui/wgpu，非 web）
 
 ## Users
 
-面向分发的本地工具:国内 Cavalry(Scene Group 动效设计软件)用户/动效设计师,在 macOS 上工作;使用者可能不熟命令行,需要即拖即装、状态可视、出错可恢复。自用之外会被分享,需要引导与容错。
+面向分发的本地工具:国内 Cavalry(Scene Group 动效设计软件)用户/动效设计师,在 macOS 或 Windows 上工作;使用者可能不熟命令行,需要即拖即装、状态可视、出错可恢复。自用之外会被分享,需要引导与容错。
 
 ## Product Purpose
 
@@ -20,16 +20,16 @@ macos(native 桌面应用,Rust + egui,非 web)
 
 ## Operating Context
 
-macOS 桌面;与 Cavalry 并存;用户常从聊天/网盘拿到 .jsc/.zip 后直接拖入;Cavalry 运行状态影响「插件需重启」提示。
+macOS / Windows 桌面;与 Cavalry 并存;用户常从聊天/网盘拿到 .jsc/.zip 后直接拖入;Cavalry 运行状态影响「插件需重启」提示。
 
 ## Capabilities and Constraints
 
 - 支持脚本与压缩包(zip / 7z / tar / tar.gz / tar.bz2)的识别、解压、去包装壳、冲突处理(覆盖/跳过/保留两者)
 - 插件包任意深度嵌套识别;包根即插件内容时以包名命名;混合包脚本插件都装
 - 卸载移入废纸篓(可还原),目录直达(访达)
-- 现有 egui 实现,25 例测试(14 单元 + 11 功能),release 签名打包(packaging/build-mac.sh)
+- 现有 egui 实现,逻辑/功能/后台任务/布局回归测试,release 签名打包(packaging/build-mac.sh)
 - 分发:macOS .dmg(Apple Silicon)/ Windows .zip(cargo-xwin 交叉编译,GUI 子系统)
-- 显式未决:无(本轮视觉世界已由用户钉定为 Google Material Design 3)
+- 显式未决：0.1.1 的 Windows 实机拖窗、混合 DPI、任务栏和安装器验收；交叉编译不能替代。
 
 ## Brand Commitments
 
@@ -37,7 +37,7 @@ macOS 桌面;与 Cavalry 并存;用户常从聊天/网盘拿到 .jsc/.zip 后直
 
 ## Evidence on Hand
 
-真实脚本/插件库(34 脚本 + 1 插件,位于 ~/Library/Application Support/Cavalry);无商标/客户证明类素材,不得虚构
+合成脚本/插件夹具与私有本机验证记录；用户库、工程与真实截图不进入公开仓库。
 
 ## Product Principles
 

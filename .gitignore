@@ -6,3 +6,18 @@ assets/icon.icns
 .impeccable/
 GUI设计全程记录.md
 regions.json
+
+# Local handoff, private verification and recoverable backups (never publish)
+PROJECT.md
+project.md
+private/
+backups/
+.env
+.env.*
+*.log
+.DS_Store
+
+target-*/
+
+__pycache__/
+*.pyc
