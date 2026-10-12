@@ -63,6 +63,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     for (language, screen) in [
         (Language::Zh, "main"),
+        (Language::Zh, "plugins"),
+        (Language::Zh, "scripts"),
+        (Language::Zh, "hover-drop"),
+        (Language::Zh, "hover-row"),
+        (Language::Zh, "light-hover-row"),
+        (Language::Zh, "light-plugins"),
         (Language::Zh, "light-main"),
         (Language::Zh, "light-appearance"),
         (Language::En, "light-settings"),
@@ -107,6 +113,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         egui::vec2(size[0] as f32, size[1] as f32),
                     )),
                     time: Some(frame as f64),
+                    events: if screen == "hover-drop" {
+                        vec![egui::Event::PointerMoved(egui::pos2(140.0, 200.0))]
+                    } else if screen.ends_with("hover-row") {
+                        vec![egui::Event::PointerMoved(egui::pos2(620.0, 166.0))]
+                    } else {
+                        vec![]
+                    },
                     ..Default::default()
                 },
                 |ctx| app.draw(ctx),

@@ -6,6 +6,7 @@ pub enum Icon {
     Script,
     Plugin,
     Folder,
+    Reveal,
     Info,
     Settings,
     Search,
@@ -76,6 +77,16 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
                 .to_vec(),
                 stroke,
             ));
+        }
+        Icon::Reveal => {
+            // Same-size open/reveal action as Trash; no mixed text/icon row actions.
+            line((-6.0, -2.0), (-6.0, 7.0));
+            line((-6.0, 7.0), (5.0, 7.0));
+            line((5.0, 7.0), (5.0, 3.0));
+            line((-6.0, -2.0), (-2.0, -2.0));
+            line((0.0, -7.0), (7.0, -7.0));
+            line((7.0, -7.0), (7.0, 0.0));
+            line((-1.0, 1.0), (7.0, -7.0));
         }
         Icon::Info => {
             p.circle_stroke(c, 8.0 * scale, stroke);
@@ -156,6 +167,7 @@ mod tests {
             Icon::Script,
             Icon::Plugin,
             Icon::Folder,
+            Icon::Reveal,
             Icon::Info,
             Icon::Settings,
             Icon::Search,

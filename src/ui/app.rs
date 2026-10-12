@@ -41,6 +41,10 @@ pub(crate) struct Audit {
     pub install: Option<egui::Rect>,
     pub install_hint: Option<egui::Rect>,
     pub search: Option<egui::Rect>,
+    pub refresh: Option<egui::Rect>,
+    pub count: Option<egui::Rect>,
+    pub count_color: Option<egui::Color32>,
+    pub count_label: String,
     pub filters: Vec<egui::Rect>,
     pub import_button: Option<egui::Rect>,
     pub import_hit: Option<egui::Rect>,
@@ -49,6 +53,9 @@ pub(crate) struct Audit {
     pub row_actions: Vec<(egui::Rect, egui::Rect)>,
     pub clear_search: Option<egui::Rect>,
     pub import_art: Option<egui::Rect>,
+    pub import_title: Option<egui::Rect>,
+    pub import_formats: Option<egui::Rect>,
+    pub row_colors: Vec<egui::Color32>,
     pub navigation: Vec<egui::Rect>,
     pub settings_body: Option<egui::Rect>,
     pub buttons: Vec<(K, egui::Rect)>,
@@ -605,23 +612,24 @@ impl CavalryKitApp {
         let modal_open = self.modal_active();
         let compact = ctx.screen_rect().width() < 850.0;
         let gap = if compact { t::MD } else { t::LG };
-        egui::TopBottomPanel::top("brand-header")
-            .exact_height(t::HEADER)
-            .frame(
-                egui::Frame::new()
-                    .fill(p.bg)
-                    .inner_margin(egui::Margin::symmetric(gap as i8, 12)),
-            )
-            .show(ctx, |ui| self.show_brand_header(ui));
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(p.bg).inner_margin(gap))
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(0))
             .show(ctx, |ui| {
                 let area = ui.max_rect();
-                let left_width = (area.width() * 0.27).clamp(216.0, 296.0);
-                let left =
-                    egui::Rect::from_min_size(area.min, egui::vec2(left_width, area.height()));
-                let right =
-                    egui::Rect::from_min_max(egui::pos2(left.right() + gap, area.top()), area.max);
+                let sidebar_width = (area.width() * 0.28).clamp(256.0, 304.0);
+                let sidebar =
+                    egui::Rect::from_min_size(area.min, egui::vec2(sidebar_width, area.height()));
+                ui.painter().rect_filled(sidebar, 0, p.panel);
+                ui.painter().vline(
+                    sidebar.right(),
+                    sidebar.y_range(),
+                    egui::Stroke::new(1.0_f32, p.line),
+                );
+                let left = sidebar.shrink(gap);
+                let right = egui::Rect::from_min_max(
+                    egui::pos2(sidebar.right() + gap, area.top() + gap),
+                    area.max - egui::vec2(gap, gap),
+                );
                 self.audit.rail = Some(left);
                 self.audit.library = Some(right);
                 let mut rail = ui.new_child(
@@ -777,10 +785,6 @@ impl CavalryKitApp {
             "タイミング調整.js",
             "레이어 정리.js",
             "路径工具.js",
-            "Color Palette.js",
-            "Animation Helpers.js",
-            "Arrange Layers.js",
-            "Preview Tools.js",
         ]
         .into_iter()
         .enumerate()
@@ -810,6 +814,8 @@ impl CavalryKitApp {
             app.settings.theme = crate::settings::Theme::Light;
         }
         match screen {
+            "plugins" => app.filter = Filter::Plugins,
+            "scripts" => app.filter = Filter::Scripts,
             "settings" => app.open_settings(),
             "custom" => {
                 app.open_settings();
@@ -934,20 +940,13 @@ mod tests {
                         settle(&ctx, &mut app, size, &mut tick);
                         let title = app.audit.title.unwrap();
                         let status = app.audit.status.unwrap();
+                        let left = app.audit.rail.unwrap();
+                        assert!(left.contains_rect(title) && left.contains_rect(status));
                         assert!(
-                            title.right() + 4.0 <= status.left(),
-                            "header overlap {language:?} {size:?}: {title:?} {status:?}"
+                            title.bottom() + t::XS <= status.top(),
+                            "sidebar identity/status overlap {language:?}"
                         );
-                        assert!(
-                            (title.center().y - status.center().y).abs() <= 4.0,
-                            "status not on title row {language:?} {size:?}: {title:?} {status:?}"
-                        );
-                        assert!(
-                            app.audit.rail.unwrap().right()
-                                + (if size[0] < 850.0 { t::MD } else { t::LG })
-                                - 0.5
-                                <= app.audit.library.unwrap().left()
-                        );
+                        assert!(left.right() + t::MD <= app.audit.library.unwrap().left());
                         let panel = app.audit.dialog.unwrap();
                         assert!(
                             panel.left() >= -1.0
@@ -990,7 +989,8 @@ mod tests {
                             "import must stay left: {language:?} {size:?}"
                         );
                         assert!(left.right() + t::MD <= right.left() + 0.5);
-                        assert!((import.top() - app.audit.card.unwrap().top()).abs() < 1.0);
+                        assert!(app.audit.status.unwrap().bottom() + t::SM <= import.top());
+                        assert!(app.audit.title.unwrap().top() < app.audit.filters[0].bottom());
                         for rect in [app.audit.search.unwrap(), app.audit.card.unwrap()] {
                             assert!(
                                 right.expand(0.5).contains_rect(rect),
@@ -1008,17 +1008,30 @@ mod tests {
                         let button = app.audit.import_button.unwrap();
                         let hint = app.audit.install_hint.unwrap();
                         let art = app.audit.import_art.unwrap();
-                        for rect in [button, hint, art] {
-                            assert!(
-                                import.contains_rect(rect),
-                                "import content clipped: {language:?} {size:?} {rect:?} {import:?}"
-                            );
-                        }
                         assert!(
-                            art.bottom() + t::SM <= button.top(),
-                            "decorative content overlaps input: {language:?} {size:?}"
+                            import.contains_rect(art),
+                            "drop content clipped {language:?} {size:?}: {art:?} {import:?}"
+                        );
+                        assert!(left.contains_rect(button) && left.contains_rect(hint));
+                        assert!(
+                            import.bottom() + t::SM <= button.top() + 0.5,
+                            "CTA must be BELOW drop card"
                         );
                         assert!(button.bottom() + t::SM <= hint.top() + 0.5);
+                        let count = app.audit.count.unwrap();
+                        assert!(count.left() >= app.audit.filters[2].right() + t::SM);
+                        assert!(count.left() - app.audit.filters[2].right() <= t::LG);
+                        assert!(right.contains_rect(count));
+                        let refresh = app.audit.refresh.unwrap();
+                        assert!(
+                            (refresh.center().y - app.audit.search.unwrap().center().y).abs() < 1.0
+                        );
+                        assert!(app.audit.search.unwrap().right() + t::SM <= refresh.left() + 0.5);
+                        for pair in app.audit.navigation.windows(2) {
+                            assert!((pair[0].left() - pair[1].left()).abs() < 0.5);
+                            assert!((pair[0].width() - pair[1].width()).abs() < 0.5);
+                            assert!(pair[0].bottom() + t::XS <= pair[1].top() + 0.5);
+                        }
                         for rect in &app.audit.navigation {
                             assert!(
                                 left.expand(0.5).contains_rect(*rect),
@@ -1221,7 +1234,7 @@ mod tests {
         }
     }
     #[test]
-    fn whole_import_card_and_visual_button_share_one_safe_target() {
+    fn separate_drop_surface_and_below_card_action_are_safe_nonoverlapping_targets() {
         let (ctx, mut app) = fixture();
         app.paths = Some(CavalryPaths::from_base(std::path::Path::new("synthetic")));
         let (_tx, rx) = std::sync::mpsc::channel();
@@ -1230,7 +1243,8 @@ mod tests {
         settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
         let hit = app.audit.import_hit.unwrap();
         let visual = app.audit.import_button.unwrap();
-        assert!(hit.contains_rect(visual));
+        assert!(!hit.intersects(visual));
+        assert!(hit.bottom() + t::SM <= visual.top() + 0.5);
         for point in [
             hit.left_top() + egui::vec2(8.0, 8.0),
             hit.center(),
@@ -1364,6 +1378,124 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn semantic_row_and_count_colors_follow_the_selected_kind_and_search_without_a_stale_frame() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        app.library.scripts.push(crate::library::ScriptEntry {
+            name: "Orbit.js".into(),
+            group: None,
+            path: "synthetic/Orbit.js".into(),
+            search_key: "orbit.js".into(),
+        });
+        app.library.plugins.push(crate::library::PluginEntry {
+            name: "Toolkit".into(),
+            author: None,
+            path: "synthetic/Toolkit".into(),
+            search_key: "toolkit".into(),
+        });
+        for theme in [Theme::Cavalry, Theme::Light] {
+            app.settings.theme = theme;
+            for language in Language::ALL {
+                app.settings.language = language;
+                for (filter, n) in [(Filter::All, 2), (Filter::Scripts, 1), (Filter::Plugins, 1)] {
+                    app.filter = filter;
+                    app.search.clear();
+                    settle(&ctx, &mut app, [720.0, 496.0], &mut tick);
+                    let p = app.p();
+                    let color = t::category(p, filter == Filter::Plugins).color;
+                    assert_eq!(app.audit.count_color, Some(color));
+                    assert_eq!(
+                        app.audit.count_label,
+                        language.tr(K::Count).replace("{n}", &n.to_string())
+                    );
+                    let expected: Vec<_> = app
+                        .rows
+                        .iter()
+                        .map(|row| t::category(p, matches!(row, Row::Plugin(_))).color)
+                        .collect();
+                    assert_eq!(app.audit.row_colors, expected);
+                    for (show, remove) in &app.audit.row_actions {
+                        assert_eq!(show.size(), egui::Vec2::splat(t::CONTROL));
+                        assert_eq!(
+                            remove.size(),
+                            show.size(),
+                            "both row actions must be icon-size targets"
+                        );
+                    }
+                    app.search = "no matching object".into();
+                    tick += 1.0;
+                    let _ = render(&ctx, &mut app, [720.0, 496.0], tick);
+                    assert!(app.rows.is_empty());
+                    assert_eq!(
+                        app.audit.count_label,
+                        language.tr(K::Count).replace("{n}", "0")
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn import_hover_uses_a_single_even_outline_and_moves_both_text_lines_without_moving_targets() {
+        let (ctx, mut app) = fixture();
+        app.paths = Some(CavalryPaths::from_base(std::path::Path::new("synthetic")));
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let area = app.audit.install.unwrap();
+        let button = app.audit.import_button.unwrap();
+        let title = app.audit.import_title.unwrap();
+        let formats = app.audit.import_formats.unwrap();
+        let idle = render(&ctx, &mut app, [900.0, 620.0], tick + 1.0);
+        for shape in idle.shapes {
+            if let egui::Shape::Rect(r) = shape.shape {
+                if r.rect == area {
+                    assert_eq!(r.stroke.width, 0.0);
+                }
+            }
+        }
+        let mut last = None;
+        for frame in 0..32 {
+            let out = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    time: Some(tick + 2.0 + frame as f64 / 60.0),
+                    events: vec![egui::Event::PointerMoved(area.center())],
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+            last = Some(out);
+        }
+        assert_eq!(app.audit.install.unwrap(), area);
+        assert_eq!(app.audit.import_button.unwrap(), button);
+        assert!(app.audit.import_title.unwrap().top() < title.top());
+        assert!(app.audit.import_formats.unwrap().top() < formats.top());
+        let p = app.p();
+        let tone = t::category(p, false);
+        let mut outlines = 0;
+        for shape in last.unwrap().shapes {
+            if let egui::Shape::Rect(r) = shape.shape {
+                if r.rect == area {
+                    assert_eq!(r.stroke.width, 1.0);
+                    assert_eq!(r.stroke.color, tone.color);
+                    outlines += 1;
+                }
+                assert!(
+                    !(area.contains_rect(r.rect)
+                        && r.rect.width() <= 4.0
+                        && r.rect.height() > area.height() / 2.0
+                        && r.fill == tone.color),
+                    "drop surface must not regain a thick left stripe"
+                );
+            }
+        }
+        assert_eq!(outlines, 1);
+        assert!(!app.tr(K::ChooseFiles).contains('…'));
+        assert!(!app.tr(K::ChooseFiles).contains("..."));
     }
     #[test]
     fn all_settings_sections_keep_content_and_actions_inside_the_modal() {

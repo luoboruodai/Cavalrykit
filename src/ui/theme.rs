@@ -175,6 +175,163 @@ pub fn palette(s: &Settings) -> Palette {
         dark,
     }
 }
+/// One semantic color per kind, reused by outlines, icons, nav, badges and CTAs.
+/// Opaque text remains readable; translucent fills are decorative, not alternate greens.
+#[derive(Clone, Copy, Debug)]
+pub struct Category {
+    pub color: Color32,
+    pub tint: Color32,
+}
+pub fn category(p: Palette, plugin: bool) -> Category {
+    let candidate = if plugin {
+        if p.dark {
+            rgb([91, 191, 244])
+        } else {
+            rgb([0, 103, 163])
+        }
+    } else {
+        p.accent_text
+    };
+    let target = ink(p.panel);
+    let mut color = target;
+    for n in 0..=40 {
+        let c = mix(candidate, target, n as f32 / 40.0);
+        if [p.bg, p.panel, p.surface, p.raised]
+            .iter()
+            .all(|bg| contrast(c, *bg) >= 4.5)
+        {
+            color = c;
+            break;
+        }
+    }
+    let tentative = mix(p.panel, color, if p.dark { 0.10 } else { 0.075 });
+    // An extreme custom mid-gray can consume the whole contrast budget. Never
+    // darken/lighten its badge toward the text if that would make the label unreadable.
+    let tint = if contrast(color, tentative) >= 4.5 {
+        tentative
+    } else {
+        p.panel
+    };
+    Category { color, tint }
+}
+pub fn helper_ink(p: Palette) -> Color32 {
+    readable(mix(p.muted, p.panel, 0.32), p.panel, 4.5)
+}
+pub fn count_badge(ui: &egui::Ui, rect: egui::Rect, label: &str, tone: Category) {
+    ui.painter().rect_filled(rect, 6, tone.tint);
+    let g = ui
+        .painter()
+        .layout_no_wrap(label.into(), medium(12.0), tone.color);
+    ui.painter()
+        .galley(rect.center() - g.size() / 2.0, g, tone.color);
+    let r = ui.interact(
+        rect,
+        ui.make_persistent_id("result-count"),
+        egui::Sense::hover(),
+    );
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+}
+/// A single vertical shortcut card; no second icon target overlays its label.
+pub fn shortcut(
+    ui: &mut egui::Ui,
+    label: &str,
+    icon: super::icons::Icon,
+    tone: Category,
+    p: Palette,
+) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), CONTROL),
+        egui::Sense::click(),
+    );
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
+    let amount = motion(
+        ui,
+        r.id.with("hover"),
+        ui.is_enabled() && (r.hovered() || r.has_focus()),
+    );
+    let bg = mix(p.surface, p.raised, amount * 0.65);
+    ui.painter().rect(
+        rect,
+        CARD_RADIUS,
+        bg,
+        egui::Stroke::new(if r.has_focus() { 2.0_f32 } else { amount }, tone.color),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().rect_filled(
+        egui::Rect::from_min_size(
+            rect.min + Vec2::new(0.0, 8.0),
+            Vec2::new(2.0, rect.height() - 16.0),
+        ),
+        1,
+        tone.color,
+    );
+    let center = egui::pos2(rect.left() + 22.0, rect.center().y);
+    super::icons::paint(
+        ui.painter(),
+        egui::Rect::from_center_size(center, Vec2::splat(17.0)),
+        icon,
+        tone.color,
+    );
+    let mut job = egui::text::LayoutJob::simple(
+        label.into(),
+        font(13.0),
+        mix(p.muted, p.text, amount),
+        (rect.width() - 56.0).max(40.0),
+    );
+    job.wrap.max_rows = 2;
+    let g = ui.painter().layout_job(job);
+    ui.painter().galley(
+        egui::pos2(rect.left() + 40.0, rect.center().y - g.size().y / 2.0),
+        g,
+        p.text,
+    );
+    r.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+/// Full-width, soft-tinted action below the drop surface. Icon/label share one hit region.
+pub fn import_action(ui: &mut egui::Ui, label: &str, tone: Category, p: Palette) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), SEARCH_HEIGHT),
+        egui::Sense::click(),
+    );
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
+    let amount = motion(
+        ui,
+        r.id.with("hover"),
+        ui.is_enabled() && (r.hovered() || r.has_focus()),
+    );
+    let press = motion(
+        ui,
+        r.id.with("press"),
+        ui.is_enabled() && r.is_pointer_button_down_on(),
+    );
+    ui.painter().rect(
+        rect,
+        10,
+        mix(tone.tint, p.surface, press * 0.2),
+        egui::Stroke::new(if r.has_focus() { 2.0_f32 } else { amount }, tone.color),
+        egui::StrokeKind::Inside,
+    );
+    let g = ui
+        .painter()
+        .layout_no_wrap(label.into(), medium(14.0), tone.color);
+    let width = 18.0 + SM + g.size().x;
+    let left = rect.center().x - width / 2.0;
+    super::icons::paint(
+        ui.painter(),
+        egui::Rect::from_center_size(
+            egui::pos2(left + 9.0, rect.center().y + press),
+            Vec2::splat(18.0),
+        ),
+        super::icons::Icon::Import,
+        tone.color,
+    );
+    ui.painter().galley(
+        egui::pos2(left + 18.0 + SM, rect.center().y - g.size().y / 2.0 + press),
+        g,
+        tone.color,
+    );
+    r.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
 pub fn scrollbar_opacity(p: Palette) -> f32 {
     (10..=20)
         .map(|i| i as f32 / 20.0)
@@ -683,7 +840,7 @@ pub fn nav_button(
         response
     }
 }
-/// Equal hit cells; only the green underline moves. Labels and targets never move.
+/// Soft segmented selector. Only the inset plate moves; hit cells never move.
 pub fn segmented(
     ui: &mut egui::Ui,
     labels: &[&str],
@@ -693,11 +850,12 @@ pub fn segmented(
 ) -> (usize, Vec<egui::Rect>) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, CONTROL), egui::Sense::hover());
     let id = ui.make_persistent_id("library-filter");
-    let cell_width = rect.width() / labels.len() as f32;
+    let inner = rect.shrink2(Vec2::new(XS, 0.0));
+    let cell_width = inner.width() / labels.len() as f32;
     let cells: Vec<_> = (0..labels.len())
         .map(|n| {
             egui::Rect::from_min_size(
-                rect.min + Vec2::new(n as f32 * cell_width, 0.0),
+                inner.min + Vec2::new(n as f32 * cell_width, 0.0),
                 Vec2::new(cell_width, CONTROL),
             )
         })
@@ -722,26 +880,23 @@ pub fn segmented(
             r
         })
         .collect();
-    ui.painter().hline(
-        rect.x_range(),
-        rect.bottom() - 1.0,
-        egui::Stroke::new(1.0_f32, p.line),
+    ui.painter().rect_filled(rect, 20, p.panel);
+    let position = super::motion::travel(ui.ctx(), id.with("plate-position"), chosen as f32, 0.22);
+    let plate = egui::Rect::from_min_size(
+        egui::pos2(inner.left() + position * cell_width, rect.top() + XS),
+        Vec2::new(cell_width, CONTROL - 2.0 * XS),
     );
-    let target = cells[chosen].center().x;
-    let x = super::motion::travel(ui.ctx(), id.with("underline-x"), target, 0.22);
-    let line_width = (cell_width * 0.62).min(48.0);
-    ui.painter().rect_filled(
-        egui::Rect::from_center_size(
-            egui::pos2(x, rect.bottom() - 1.5),
-            Vec2::new(line_width, 2.0),
-        ),
-        1,
-        p.accent_text,
+    ui.painter().rect(
+        plate,
+        16,
+        if p.dark { p.surface } else { Color32::WHITE },
+        egui::Stroke::new(1.0_f32, p.line),
+        egui::StrokeKind::Inside,
     );
     for (n, r) in responses.into_iter().enumerate() {
         let hover = motion(ui, r.id.with("hover"), r.hovered() || r.has_focus());
         let color = if n == chosen {
-            p.accent_text
+            p.text
         } else {
             mix(p.muted, p.text, hover)
         };
@@ -754,16 +909,13 @@ pub fn segmented(
             },
             color,
         );
-        ui.painter().galley(
-            cells[n].center() - g.size() / 2.0 - Vec2::new(0.0, 2.0),
-            g,
-            color,
-        );
+        ui.painter()
+            .galley(cells[n].center() - g.size() / 2.0, g, color);
         if r.has_focus() {
             ui.painter().rect_stroke(
-                cells[n].shrink2(Vec2::new(3.0, 3.0)),
-                4,
-                egui::Stroke::new(1.0_f32, p.focus),
+                cells[n].shrink2(Vec2::new(0.0, XS)),
+                16,
+                egui::Stroke::new(2.0_f32, category(p, n == 2).color),
                 egui::StrokeKind::Inside,
             );
         }
@@ -940,7 +1092,7 @@ mod tests {
         }
     }
     #[test]
-    fn filters_use_one_accent_underline_without_a_segmented_backplate() {
+    fn pill_filters_have_one_inset_plate_and_fixed_full_height_hit_cells() {
         for theme in [Theme::Cavalry, Theme::Light] {
             let ctx = egui::Context::default();
             crate::ui::fonts::setup(&ctx);
@@ -950,27 +1102,62 @@ mod tests {
             };
             apply_settings(&ctx, &settings);
             let p = palette(&settings);
-            let mut strip = egui::Rect::NOTHING;
+            let mut cells = Vec::new();
+            let mut area = egui::Rect::NOTHING;
             let output = ctx.run(egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    let (_, cells) = segmented(ui, &["All", "Scripts", "Plugins"], 0, 240.0, p);
-                    strip = cells.iter().copied().reduce(egui::Rect::union).unwrap();
+                    let start = ui.cursor().min;
+                    cells = segmented(ui, &["All", "Scripts", "Plugins"], 0, 240.0, p).1;
+                    area = egui::Rect::from_min_size(start, Vec2::new(240.0, CONTROL));
                 });
             });
-            let mut underlines = 0;
-            for shape in output.shapes {
-                if let egui::Shape::Rect(r) = shape.shape {
-                    if strip.expand(0.01).contains_rect(r.rect) && r.fill.a() > 0 {
+            assert_eq!(cells.len(), 3);
+            for r in &cells {
+                assert_eq!(r.height(), CONTROL);
+                assert!(area.contains_rect(*r));
+            }
+            let plates: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Rect(r)
+                        if r.rect.height() == CONTROL - 2.0 * XS && r.fill.a() > 0 =>
+                    {
+                        Some(r)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(plates.len(), 1);
+            assert!(area.shrink(XS).contains_rect(plates[0].rect));
+            assert_eq!(plates[0].corner_radius, egui::CornerRadius::same(16));
+        }
+    }
+    #[test]
+    fn green_blue_category_tokens_are_distinct_and_readable_on_their_badges() {
+        for theme in [Theme::Cavalry, Theme::Light, Theme::Custom] {
+            for background in [[0, 0, 0], [255, 255, 255], [128, 128, 128], [60, 20, 90]] {
+                let p = palette(&Settings {
+                    theme,
+                    background,
+                    ..Default::default()
+                });
+                let green = category(p, false);
+                let blue = category(p, true);
+                if theme != Theme::Custom {
+                    assert_ne!(green.color, blue.color);
+                }
+                for tone in [green, blue] {
+                    for surface in [p.bg, p.panel, p.surface, p.raised, tone.tint] {
                         assert!(
-                            r.rect.height() <= 2.0,
-                            "no heavy segmented selector backgrounds"
+                            contrast(tone.color, surface) >= 4.49,
+                            "{theme:?} {:?}",
+                            tone.color
                         );
-                        assert_eq!(r.fill, p.accent_text);
-                        underlines += 1;
                     }
                 }
+                assert!(contrast(helper_ink(p), p.panel) >= 4.49);
             }
-            assert_eq!(underlines, 1);
         }
     }
     #[test]
