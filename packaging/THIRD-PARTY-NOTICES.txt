@@ -4,9 +4,11 @@ Roboto
 Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)
 Licensed under SIL Open Font License 1.1.
 
-CavalryKit UI CJK (renamed, glyph-subset derivative of Noto Sans CJK JP)
+CavalryKit UI SC / JP / KR Regular and Medium
+(renamed, regional glyph-subset derivatives of Noto Sans CJK)
 © 2014-2021 Adobe (http://www.adobe.com/).
 Source: https://github.com/notofonts/noto-cjk
+Upstream commit: f8d157532fbfaeda587e826d4cd5b21a49186f7c
 Only UI glyphs are included; the original full font is not bundled.
 
 This Font Software is licensed under the SIL Open Font License,

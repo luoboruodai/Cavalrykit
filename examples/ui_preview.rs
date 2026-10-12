@@ -20,6 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (language, screen) in [
         (Language::Zh, "main"),
         (Language::Zh, "settings"),
+        (Language::Zh, "appearance"),
+        (Language::Zh, "installation"),
+        (Language::Zh, "cavalry-settings"),
         (Language::Zh, "result"),
         (Language::Zh, "conflict"),
         (Language::Zh, "restart"),
@@ -28,11 +31,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Language::Ja, "settings"),
         (Language::Ko, "settings"),
         (Language::En, "light"),
+        (Language::Zh, "main-small"),
+        (Language::En, "main-small"),
+        (Language::Ja, "main-small"),
+        (Language::Ko, "main-small"),
+        (Language::Zh, "custom-small"),
+        (Language::Ja, "settings-small"),
+        (Language::En, "appearance-small"),
+        (Language::Ko, "installation-small"),
     ] {
-        let width = 1120u32;
-        let height = 760u32;
+        let compact = screen.ends_with("-small");
+        let (width, height) = if compact {
+            (720u32, 496u32)
+        } else {
+            (1120u32, 760u32)
+        };
         let ctx = egui::Context::default();
-        let mut app = CavalryKitApp::preview(&ctx, language, screen);
+        let mut app = CavalryKitApp::preview(
+            &ctx,
+            language,
+            screen.strip_suffix("-small").unwrap_or(screen),
+        );
         let format = wgpu::TextureFormat::Rgba8Unorm;
         let mut renderer = Renderer::new(&device, format, None, 1, false);
         let mut final_frame = None;

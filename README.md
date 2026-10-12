@@ -7,7 +7,7 @@ Cavalry 风格深灰界面，支持 **简体中文 / English / 日本語 / 한�
 
 ## 下载与升级
 
-从仓库 **Releases → v0.1.1** 下载对应平台的安装包，使用 `SHA256SUMS.txt` 核对完整性。
+**当前为 0.1.1 待发布候选。** 下列产物已纳入本地交付流程；v0.1.1 Release 尚未创建。正式发布后从仓库 Releases 下载，使用 `SHA256SUMS.txt` 核对完整性。
 
 | 平台 | 文件 | 安装 / 升级 |
 |---|---|---|
@@ -23,6 +23,8 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 - **更少 UI 阻塞**：识别、解压、复制、扫描、卸载和进程检查在后台串行执行；原生文件选择使用异步窗口。
 - **Windows 针对性处理**：用原生进程枚举代替反复启动 `tasklist`；保留系统原生窗口标题栏；默认 wgpu 渲染，另有 Glow 兼容模式。
 - **大型库性能**：缓存搜索索引、只绘制可见条目、长名称一次截断排版；结果分页以限制单帧工作量。
+- **重设计界面**：紧凑分类侧栏、横向导入区、克制的灰阶与绿色、低干扰列表、分组设置；搜索提示为「搜索插件或脚本名称」。
+- **区域字体**：Roboto 拉丁字形 + 按语言选择的 Noto-derived SC / JP / KR，内嵌 Regular / Medium 两种字重，避免用日文字形替代简体中文 UI。
 - **一致的界面**：右对齐弹窗操作、4/8/16/24pt 基础间距、标题同行状态、明确的取消入口、可见滚动条和键盘焦点。
 - **安全安装**：同名内容先询问；覆盖前暂存，失败保留/恢复旧内容；同批重名、重复保留两者和重新导入自身均有回归测试。
 - **双端图标**：原图保留；Mac ICNS 配标准/Retina 图标和光学留边，Windows ICO 有 15 档尺寸。
@@ -42,7 +44,7 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 
 ![设置（合成示例）](assets/screenshots/settings.png)
 
-「脚本目录 / 插件目录 / 关于」下方的「设置」提供：
+左侧「脚本目录 / 插件目录 / 关于」下方的「设置」分为 **通用 / 界面配色 / 安装行为 / Cavalry** 四页：
 
 - 界面语言：中 / 英 / 日 / 韩；**不修改文件名称或脚本内容**。
 - 配色：Cavalry 深灰、明亮、自定义强调色与背景色；文字对比度自动适配。
@@ -53,7 +55,7 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 
 更改即时预览；「取消」恢复原设置，「保存设置」后才持久保留。设置仅在本机 `CavalryKit/preferences.json` 中保存，写入失败保留原文件。
 
-快捷键：`Cmd/Ctrl+O` 选择文件，`Cmd/Ctrl+R` 刷新，`Cmd/Ctrl+,` 设置，`Esc` 取消/关闭弹窗（不会接受覆盖或重启）。
+快捷键：`Cmd/Ctrl+F` 搜索，`Cmd/Ctrl+O` 选择文件，`Cmd/Ctrl+R` 刷新，`Cmd/Ctrl+,` 设置，`Esc` 取消/关闭弹窗（不会接受覆盖或重启）。
 
 | 平台 | 脚本目录 | 插件目录 |
 |---|---|---|
@@ -74,7 +76,7 @@ Windows 静态链接 VC++ 运行库。实际流畅度仍受驱动、显示设置
 ## 验证范围
 
 - 自动测试覆盖引擎、失败回滚、背景任务、偏好保存、多语言字形、布局、对比度、图标及安全重启状态机。
-- 原生 macOS / Windows CI 定义在 `.github/workflows/desktop.yml`；具体运行结果见仓库 Actions。Windows CI 还验证安装、原位更新、快捷方式图标、备份和文件锁失败路径。
+- 原生 macOS / Windows CI 定义在 `.github/workflows/desktop.yml`；工作流尚未推送执行，不能记为通过。Windows CI 计划执行安装、原位更新、快捷方式图标、备份和文件锁失败路径测试。
 - macOS 本机检查实际导入、结果、稍后重启、设置与多语言交互。
 - **Windows 真实 Cavalry、GPU/多屏拖窗、混合 DPI 和任务栏缓存体验验收仍延期**；CI 和交叉编译不能替代它。自动安全重启测试使用模拟进程，不对用户未保存的工程执行重启。
 - UI 采用尼尔森启发式复查，不是第三方认证或用户研究。见 [UI 复查记录](packaging/UI_REVIEW.md) 和 [验证清单](packaging/VALIDATION.md)。
@@ -105,10 +107,14 @@ On macOS, quit the old app and replace `CavalryKit.app` in Applications. On Wind
 
 Drop scripts, plugin folders or supported archives into the window. Resolve name conflicts, then inspect the result dialog. You may restart Cavalry now or later. **Save your project first.** Only a normal quit is requested; cancellation/timeouts never force-close the app, and multiple running instances require manual handling. A running app reopens its original executable, not a different configured version.
 
+The redesigned interface uses a compact library sidebar, horizontal import card, quieter list actions, and four settings pages. Search reads “Search plugins or scripts by name”. Roboto is paired with region-specific SC/JP/KR UI subsets at regular/medium weights.
+
 Settings include language, color scheme, custom accent/background, 90–125% scale, reduced motion, refresh-on-focus and restart-prompt policy. Changes preview immediately; Cancel reverts them, Save persists them locally. Conflicts and removal confirmations remain mandatory safety controls. Imported scripts are not executed or uploaded.
 
 The library uses cached filtering and virtualized rows. I/O runs in a serialized background worker. Windows uses native process enumeration, embedded multi-size icons and static VC++ runtime linking. `CAVALRYKIT_RENDERER=glow` selects an alternative rendering backend for older drivers.
 
-**Verification boundary:** see Actions for native automated macOS/Windows jobs. Physical Windows/Cavalry, GPU/mixed-DPI and taskbar interaction checks are deferred; automated CI and cross-compilation are not equivalent to those tests. Restart state-machine tests use simulated processes and never close a user's unsaved project. macOS uses ad-hoc signing without notarization; Windows is not commercially code-signed.
+**Release status:** 0.1.1 is a local release candidate; its GitHub Release has not been created. The native macOS/Windows CI workflow is prepared but has not run remotely.
+
+**Verification boundary:** Physical Windows/Cavalry, GPU/mixed-DPI and taskbar interaction checks are deferred; automated CI and cross-compilation are not equivalent to those tests. Restart state-machine tests use simulated processes and never close a user's unsaved project. macOS uses ad-hoc signing without notarization; Windows is not commercially code-signed.
 
 For learning purposes only. Not affiliated with Scene Group.

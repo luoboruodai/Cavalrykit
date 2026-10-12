@@ -3,13 +3,19 @@
 ## 0.1.1 — 2026-10-12
 
 ### UI and settings / 界面与设置
+- Redesign the whole workspace around a compact sidebar, horizontal drop/import card, subdued charcoal layers, softer green and a full-width brand/status header.
+- Split settings into General / Appearance / Installation / Cavalry pages with visual theme previews.
+- Change the Chinese search hint to “搜索插件或脚本名称”; keep helper text in normal wrapped flow instead of a fixed status slot.
+- Use separate SC/JP/KR Regular and Medium UI font subsets; verify mixed-script ink bounds and all translated glyphs.
+- Add Cmd/Ctrl+F, accessible search labeling and contextual removal labels; keep main/footer actions within small-window bounds.
 - Cavalry-inspired dark/light/custom palette with readable text across extreme custom colors.
-- Four UI languages (Chinese, English, Japanese, Korean) and an OFL font subset for consistent glyph coverage.
+- Verify the actual rendered library scroll thumb, not just palette tokens; remove a local foreground override that made the idle thumb too dim.
+- Four UI languages (Chinese, English, Japanese, Korean) and regional OFL font subsets for consistent glyph coverage.
 - Right-aligned modal actions, fixed-height footers, 4/8/16/24pt spacing, same-row status and visible keyboard focus.
 - Preview/cancel/save preferences, scale, reduced motion, refresh-on-focus and restart policy.
 - Optional safe Cavalry restart/open after success; cancellation/timeout/multiple instances never force-close or duplicate-launch.
 - Preserve prior input failures when cancelling a conflict batch; fix search clear-button overflow and localized row-action sizing.
-- Native macOS/Windows CI and isolated Windows installer/shortcut/rollback tests; physical Windows acceptance remains deferred.
+- Prepare native macOS/Windows CI and isolated Windows installer/shortcut/rollback tests (remote jobs not yet run); physical Windows acceptance remains deferred.
 
 ### Performance / 性能
 - Move file I/O, archive preparation and installation to a serialized background worker.
@@ -19,10 +25,10 @@
 - Repaint when results arrive; idle process probes only trigger a redraw when the status changes.
 
 ### UI / 界面
-- Present all import results in a bounded modal dialog; keep the import rail size unchanged.
+- Present all import results in a bounded modal dialog; keep the main layout stable.
 - Clip independent columns and bound long labels/details; support small windows.
 - Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
-- Separate in-app branding from macOS Dock padding; update bundle build to 4 for the icon revision.
+- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 6.
 - Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
 

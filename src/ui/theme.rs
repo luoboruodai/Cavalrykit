@@ -6,7 +6,9 @@ pub const SM: f32 = 8.0;
 pub const MD: f32 = 16.0;
 pub const LG: f32 = 24.0;
 pub const CONTROL: f32 = 36.0;
-pub const ROW: f32 = 56.0;
+pub const ROW: f32 = 64.0;
+pub const HEADER: f32 = 64.0;
+pub const SIDEBAR: f32 = 208.0;
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
     pub bg: Color32,
@@ -16,6 +18,9 @@ pub struct Palette {
     pub text: Color32,
     pub muted: Color32,
     pub border: Color32,
+    /// Decorative dividers, not text/control focus boundaries.
+    pub line: Color32,
+    pub selected: Color32,
     pub accent: Color32,
     pub on_accent: Color32,
     pub accent_text: Color32,
@@ -30,7 +35,7 @@ pub fn rgb(v: [u8; 3]) -> Color32 {
 }
 pub fn mix(a: Color32, b: Color32, k: f32) -> Color32 {
     rgb(std::array::from_fn(|i| {
-        (a[i] as f32 * (1.0 - k) + b[i] as f32 * k).round() as u8
+        (a[i] as f32 * (1.0_f32 - k) + b[i] as f32 * k).round() as u8
     }))
 }
 pub fn luminance(c: Color32) -> f32 {
@@ -67,8 +72,8 @@ fn readable(c: Color32, bg: Color32, ratio: f32) -> Color32 {
 }
 pub fn palette(s: &Settings) -> Palette {
     let (bg, accent) = match s.theme {
-        Theme::Cavalry => (rgb([35, 36, 38]), rgb([0, 202, 126])),
-        Theme::Light => (rgb([243, 244, 245]), rgb([0, 128, 83])),
+        Theme::Cavalry => (rgb([25, 27, 30]), rgb([110, 216, 164])),
+        Theme::Light => (rgb([249, 250, 251]), rgb([31, 119, 82])),
         Theme::Custom => (rgb(s.background), rgb(s.accent)),
     };
     let global_ink = ink(bg);
@@ -82,13 +87,14 @@ pub fn palette(s: &Settings) -> Palette {
             bg
         }
     };
-    let surface = safe_surface(if dark { 0.055 } else { 0.025 });
-    let panel = safe_surface(0.035);
-    let raised = safe_surface(if dark { 0.105 } else { 0.055 });
+    let surface = safe_surface(if dark { 0.045 } else { 0.025 });
+    let panel = safe_surface(0.020);
+    let raised = safe_surface(if dark { 0.075 } else { 0.05 });
+    let selected = safe_surface(if dark { 0.075 } else { 0.065 });
     let readable_all = |color: Color32, minimum: f32| {
         for step in 0..=40 {
             let candidate = mix(color, global_ink, step as f32 / 40.0);
-            if [bg, panel, surface, raised]
+            if [bg, panel, surface, raised, selected]
                 .iter()
                 .all(|base| contrast(candidate, *base) >= minimum)
             {
@@ -105,7 +111,7 @@ pub fn palette(s: &Settings) -> Palette {
         },
         7.0,
     );
-    let muted = readable_all(mix(text, raised, 0.24), 4.5);
+    let muted = readable_all(mix(text, raised, 0.43), 4.5);
     Palette {
         bg,
         panel,
@@ -114,6 +120,8 @@ pub fn palette(s: &Settings) -> Palette {
         text,
         muted,
         border: readable(mix(text, surface, 0.72), surface, 3.0),
+        line: mix(text, surface, if dark { 0.90 } else { 0.86 }),
+        selected,
         accent,
         on_accent: ink(accent),
         accent_text: readable_all(accent, 4.5),
@@ -137,6 +145,16 @@ pub fn palette(s: &Settings) -> Palette {
         focus: readable(accent, surface, 3.0),
         dark,
     }
+}
+pub fn scrollbar_opacity(p: Palette) -> f32 {
+    (10..=20)
+        .map(|i| i as f32 / 20.0)
+        .find(|alpha| {
+            [p.bg, p.panel, p.surface, p.raised]
+                .iter()
+                .all(|bg| contrast(mix(*bg, p.text, *alpha), *bg) >= 3.0)
+        })
+        .unwrap_or(1.0)
 }
 pub fn font(size: f32) -> FontId {
     FontId::proportional(size)
@@ -190,9 +208,9 @@ pub fn apply_settings(ctx: &egui::Context, s: &Settings) {
     ] {
         widget.bg_fill = p.surface;
         widget.weak_bg_fill = p.surface;
-        widget.bg_stroke = egui::Stroke::new(1.0_f32, p.border);
+        widget.bg_stroke = egui::Stroke::new(1.0_f32, p.line);
         widget.fg_stroke = egui::Stroke::new(1.0_f32, p.text);
-        widget.corner_radius = egui::CornerRadius::same(6);
+        widget.corner_radius = egui::CornerRadius::same(3);
     }
     style.visuals.widgets.hovered.bg_fill = p.raised;
     style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, p.focus);
@@ -200,9 +218,16 @@ pub fn apply_settings(ctx: &egui::Context, s: &Settings) {
     style.spacing.item_spacing = Vec2::splat(SM);
     style.spacing.button_padding = Vec2::new(MD, SM);
     style.spacing.interact_size = Vec2::new(40.0, CONTROL);
-    style.spacing.scroll = egui::style::ScrollStyle::solid();
+    style.spacing.scroll = egui::style::ScrollStyle::floating();
+    // Reserve the full gutter even when the handle is thin; never cover row actions.
+    style.spacing.scroll.floating_allocated_width = 12.0;
+    style.spacing.scroll.floating_width = 6.0;
+    let handle_opacity = scrollbar_opacity(p);
+    style.spacing.scroll.dormant_handle_opacity = handle_opacity;
+    style.spacing.scroll.active_handle_opacity = (handle_opacity + 0.15).min(1.0);
     style.spacing.scroll.bar_width = 8.0;
     style.spacing.scroll.foreground_color = true;
+    style.visuals.widgets.noninteractive.fg_stroke.color = p.text;
     style.spacing.scroll.handle_min_length = 40.0;
     style.animation_time = if s.reduce_motion { 0.0 } else { 0.12 };
     style.text_styles.insert(egui::TextStyle::Body, font(14.0));
@@ -231,9 +256,9 @@ pub enum Button {
 }
 pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui::Response {
     let (fill, ink, stroke) = match kind {
-        Button::Primary => (p.accent, p.on_accent, egui::Stroke::new(1.0_f32, p.focus)),
+        Button::Primary => (p.accent, p.on_accent, egui::Stroke::NONE),
         Button::Danger => (p.surface, p.danger, egui::Stroke::new(1.0_f32, p.danger)),
-        Button::Secondary => (p.surface, p.text, egui::Stroke::new(1.0_f32, p.border)),
+        Button::Secondary => (p.surface, p.text, egui::Stroke::new(1.0_f32, p.line)),
         Button::Quiet => (Color32::TRANSPARENT, p.muted, egui::Stroke::NONE),
         Button::QuietDanger => (Color32::TRANSPARENT, p.danger, egui::Stroke::NONE),
     };
@@ -283,8 +308,14 @@ pub fn modal<R>(
     egui::Modal::new(egui::Id::new(id))
         .frame(
             egui::Frame::new()
-                .fill(p.raised)
-                .stroke(egui::Stroke::new(1.0_f32, p.border))
+                .fill(p.panel)
+                .stroke(egui::Stroke::new(1.0_f32, p.line))
+                .shadow(egui::Shadow {
+                    offset: [0, 12],
+                    blur: 40,
+                    spread: 2,
+                    color: Color32::from_black_alpha(80),
+                })
                 .corner_radius(12)
                 .inner_margin(LG),
         )
@@ -317,6 +348,128 @@ pub fn label_truncated(
     ui.painter().layout_job(job)
 }
 
+pub fn icon_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    icon: super::icons::Icon,
+    danger: bool,
+    p: Palette,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(CONTROL), egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+    });
+    let active = response.hovered() || response.has_focus();
+    let color = if active && danger { p.danger } else { p.muted };
+    if active {
+        ui.painter().rect_filled(rect, 6, p.raised);
+    }
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect,
+            6,
+            egui::Stroke::new(2.0_f32, p.focus),
+            egui::StrokeKind::Inside,
+        );
+    }
+    super::icons::paint(
+        ui.painter(),
+        egui::Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
+        icon,
+        color,
+    );
+    response
+        .on_hover_text(label)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+pub fn nav_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    icon: super::icons::Icon,
+    selection: Option<bool>,
+    badge: Option<usize>,
+    p: Palette,
+) -> egui::Response {
+    let selected = selection.unwrap_or(false);
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), egui::Sense::click());
+    response.widget_info(|| {
+        if selection.is_some() {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::SelectableLabel,
+                ui.is_enabled(),
+                selected,
+                label,
+            )
+        } else {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+        }
+    });
+    if selected || response.hovered() || response.has_focus() {
+        ui.painter()
+            .rect_filled(rect, 6, if selected { p.selected } else { p.surface });
+    }
+    if selected {
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(rect.min + Vec2::new(0.0, 12.0), Vec2::new(2.0_f32, 16.0)),
+            1,
+            p.accent_text,
+        );
+    }
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect,
+            6,
+            egui::Stroke::new(2.0_f32, p.focus),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let color = if selected { p.text } else { p.muted };
+    super::icons::paint(
+        ui.painter(),
+        egui::Rect::from_center_size(
+            egui::pos2(rect.left() + 20.0, rect.center().y),
+            Vec2::splat(16.0),
+        ),
+        icon,
+        if selected { p.accent_text } else { p.muted },
+    );
+    let badge_width = badge
+        .map(|n| {
+            let g = ui
+                .painter()
+                .layout_no_wrap(n.to_string(), font(11.0), p.muted);
+            let width = g.size().x;
+            ui.painter().galley(
+                egui::pos2(
+                    rect.right() - 12.0 - width,
+                    rect.center().y - g.size().y / 2.0_f32,
+                ),
+                g,
+                p.muted,
+            );
+            width + MD
+        })
+        .unwrap_or(0.0);
+    // Navigation must remain identifiable in longer translations; only filenames truncate.
+    let mut job = egui::text::LayoutJob::simple(
+        label.into(),
+        if selected { medium(13.0) } else { font(13.0) },
+        color,
+        (rect.width() - 48.0 - badge_width).max(32.0),
+    );
+    job.wrap.max_rows = 2;
+    let g = ui.painter().layout_job(job);
+    ui.painter().galley(
+        egui::pos2(rect.left() + 36.0, rect.center().y - g.size().y / 2.0_f32),
+        g,
+        color,
+    );
+    response
+        .on_hover_text(label)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,7 +497,7 @@ mod tests {
                         accent,
                         ..Default::default()
                     });
-                    for bg in [p.bg, p.panel, p.surface, p.raised] {
+                    for bg in [p.bg, p.panel, p.surface, p.raised, p.selected] {
                         for fg in [p.text, p.muted, p.danger, p.success, p.accent_text] {
                             assert!(
                                 contrast(fg, bg) >= 4.5 - 0.01,
@@ -354,6 +507,9 @@ mod tests {
                         }
                     }
                     assert!(contrast(p.on_accent, p.accent) >= 4.5);
+                    for bg in [p.bg, p.panel, p.surface, p.raised] {
+                        assert!(contrast(mix(bg, p.text, scrollbar_opacity(p)), bg) >= 3.0);
+                    }
                 }
             }
         }

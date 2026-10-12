@@ -9,7 +9,6 @@ use crate::{
     settings::{self, Settings},
     worker::{Event, Job, Worker},
 };
-use egui::Vec2;
 use std::{
     collections::{HashSet, VecDeque},
     path::PathBuf,
@@ -39,6 +38,11 @@ pub(crate) struct Audit {
     pub title: Option<egui::Rect>,
     pub status: Option<egui::Rect>,
     pub dialog: Option<egui::Rect>,
+    pub install: Option<egui::Rect>,
+    pub install_hint: Option<egui::Rect>,
+    pub search: Option<egui::Rect>,
+    pub navigation: Vec<egui::Rect>,
+    pub settings_body: Option<egui::Rect>,
     pub buttons: Vec<(K, egui::Rect)>,
 }
 pub struct CavalryKitApp {
@@ -64,6 +68,7 @@ pub struct CavalryKitApp {
     pub(crate) logo: egui::TextureHandle,
     pub(crate) settings: Settings,
     pub(crate) settings_draft: Option<Settings>,
+    pub(crate) settings_section: super::settings_panel::Section,
     settings_path: Option<PathBuf>,
     pub(crate) settings_error: Option<String>,
     applied_style: Option<Settings>,
@@ -133,6 +138,7 @@ impl CavalryKitApp {
             logo,
             settings: Settings::default(),
             settings_draft: None,
+            settings_section: super::settings_panel::Section::General,
             settings_path: None,
             settings_error: None,
             applied_style: None,
@@ -166,6 +172,9 @@ impl CavalryKitApp {
     fn apply_style(&mut self, ctx: &egui::Context) {
         let settings = self.prefs().clone();
         if self.applied_style.as_ref() != Some(&settings) {
+            if self.applied_style.as_ref().map(|s| s.language) != Some(settings.language) {
+                super::fonts::setup_for_language(ctx, settings.language);
+            }
             t::apply_settings(ctx, &settings);
             self.applied_style = Some(settings);
             ctx.request_repaint();
@@ -304,6 +313,7 @@ impl CavalryKitApp {
         }
         if self.settings_draft.is_none() {
             self.settings_draft = Some(self.settings.clone());
+            self.settings_section = super::settings_panel::Section::General;
             self.settings_error = None;
         }
     }
@@ -563,6 +573,9 @@ impl CavalryKitApp {
         }
         self.was_focused = focused;
         if !self.modal_active() {
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
+                ctx.memory_mut(|m| m.request_focus(egui::Id::new("library-search")));
+            }
             if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::O)) {
                 self.pick_files(ctx);
             }
@@ -581,34 +594,32 @@ impl CavalryKitApp {
             self.push_toast(self.tr(K::BusyClose));
         }
         let p = self.p();
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(p.bg).inner_margin(t::MD))
+        egui::TopBottomPanel::top("brand-header")
+            .exact_height(t::HEADER)
+            .frame(
+                egui::Frame::new()
+                    .fill(p.panel)
+                    .inner_margin(egui::Margin::symmetric(24, 16)),
+            )
+            .show(ctx, |ui| self.show_brand_header(ui));
+        let rail = egui::SidePanel::left("navigation")
+            .exact_width(t::SIDEBAR)
+            .resizable(false)
+            .frame(egui::Frame::new().fill(p.panel).inner_margin(t::MD))
             .show(ctx, |ui| {
-                let full = ui.max_rect();
-                let rail_w = if full.width() >= 980.0 { 296.0 } else { 264.0 };
-                let rail_rect =
-                    egui::Rect::from_min_size(full.min, Vec2::new(rail_w, full.height()));
-                self.audit.rail = Some(rail_rect);
-                let mut rail =
-                    ui.new_child(egui::UiBuilder::new().id_salt("rail").max_rect(rail_rect));
-                rail.set_clip_rect(rail_rect.intersect(ui.clip_rect()));
-                t::card(p).show(&mut rail, |ui| {
-                    ui.set_width(rail_w - 2.0 * t::MD);
-                    egui::ScrollArea::vertical()
-                        .id_salt("rail-scroll")
-                        .max_height(full.height() - 2.0 * t::MD)
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| self.show_rail(ui));
-                });
-                let lib_rect = egui::Rect::from_min_max(
-                    egui::pos2(full.min.x + rail_w + t::LG, full.min.y),
-                    full.max,
-                );
-                self.audit.library = Some(lib_rect);
-                let mut library =
-                    ui.new_child(egui::UiBuilder::new().id_salt("library").max_rect(lib_rect));
-                library.set_clip_rect(lib_rect.intersect(ui.clip_rect()));
-                self.show_library(&mut library);
+                let rail_height = ui.available_height();
+                // Short windows still expose all navigation via scrolling and keyboard focus.
+                egui::ScrollArea::vertical()
+                    .id_salt("rail-scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.show_rail(ui, rail_height));
+            });
+        self.audit.rail = Some(rail.response.rect);
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(t::LG))
+            .show(ctx, |ui| {
+                self.audit.library = Some(ui.max_rect());
+                self.show_library(ui);
             });
         if let Some((text, at)) = &self.toast {
             let duration = Duration::from_secs(3);
@@ -714,9 +725,22 @@ impl CavalryKitApp {
             "settings" => app.open_settings(),
             "custom" => {
                 app.open_settings();
+                app.settings_section = super::settings_panel::Section::Appearance;
                 let s = app.settings_draft.as_mut().unwrap();
                 s.theme = crate::settings::Theme::Custom;
                 s.accent = [95, 172, 255];
+            }
+            "appearance" => {
+                app.open_settings();
+                app.settings_section = super::settings_panel::Section::Appearance;
+            }
+            "installation" => {
+                app.open_settings();
+                app.settings_section = super::settings_panel::Section::Installation;
+            }
+            "cavalry-settings" => {
+                app.open_settings();
+                app.settings_section = super::settings_panel::Section::Cavalry;
             }
             "light" => app.settings.theme = crate::settings::Theme::Light,
             "result" => {
@@ -854,6 +878,127 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+    #[test]
+    fn redesigned_main_keeps_wrapped_hints_search_and_lists_inside_the_content_area() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        for language in Language::ALL {
+            for theme in [Theme::Cavalry, Theme::Light] {
+                app.settings.language = language;
+                app.settings.theme = theme;
+                for size in [[720.0, 496.0], [900.0, 620.0], [1120.0, 760.0]] {
+                    for busy in [None, Some(K::PlanBusy), Some(K::RestartBusy)] {
+                        app.busy = busy;
+                        settle(&ctx, &mut app, size, &mut tick);
+                        let area = app.audit.library.unwrap().expand(1.0);
+                        for (name, rect) in [
+                            ("import", app.audit.install.unwrap()),
+                            ("search", app.audit.search.unwrap()),
+                            ("list", app.audit.card.unwrap()),
+                        ] {
+                            assert!(
+                                area.contains_rect(rect),
+                                "{name}: {language:?} {size:?}: {rect:?} outside {area:?}"
+                            );
+                        }
+                        let install = app.audit.install.unwrap();
+                        let hint = app.audit.install_hint.unwrap();
+                        assert!(
+                            install.contains_rect(hint),
+                            "clipped helper: {language:?} {size:?}: {install:?} {hint:?}"
+                        );
+                        assert!(hint.bottom() + t::SM <= install.bottom() + 1.0);
+                        assert!(app.audit.search.unwrap().top() >= install.bottom() + t::SM);
+                        assert!(
+                            app.audit.card.unwrap().top()
+                                >= app.audit.search.unwrap().bottom() + t::SM
+                        );
+                        assert!(app.audit.navigation.iter().all(|r| r.is_finite()));
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn all_settings_sections_keep_content_and_actions_inside_the_modal() {
+        use super::super::settings_panel::Section;
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        for language in Language::ALL {
+            app.settings.language = language;
+            for size in [[720.0, 496.0], [900.0, 620.0], [1120.0, 760.0]] {
+                app.open_settings();
+                app.settings_draft.as_mut().unwrap().theme = Theme::Custom;
+                for section in [
+                    Section::General,
+                    Section::Appearance,
+                    Section::Installation,
+                    Section::Cavalry,
+                ] {
+                    app.settings_section = section;
+                    settle(&ctx, &mut app, size, &mut tick);
+                    let dialog = app.audit.dialog.unwrap();
+                    let body = app.audit.settings_body.unwrap();
+                    assert!(dialog.contains_rect(body));
+                    assert!(body.bottom() + t::SM <= app.audit.buttons[0].1.top());
+                    assert!(egui::Rect::from_min_size(egui::Pos2::ZERO, size.into())
+                        .expand(1.0)
+                        .contains_rect(dialog));
+                }
+                app.cancel_settings(&ctx);
+            }
+        }
+    }
+    #[test]
+    fn library_scrollbar_keeps_contrast_after_local_style_overrides() {
+        let (ctx, mut app) = fixture();
+        for i in 0..100 {
+            app.library.scripts.push(crate::library::ScriptEntry {
+                name: format!("Synthetic {i}.js"),
+                search_key: format!("synthetic {i}.js"),
+                group: None,
+                path: format!("synthetic/{i}.js").into(),
+            });
+        }
+        let mut tick = 0.0;
+        for theme in [Theme::Cavalry, Theme::Light, Theme::Custom] {
+            app.settings.theme = theme;
+            app.settings.background = [128, 128, 128];
+            settle(&ctx, &mut app, [1120.0, 760.0], &mut tick);
+            tick += 1.0;
+            let output = render(&ctx, &mut app, [1120.0, 760.0], tick);
+            let card = app.audit.card.unwrap();
+            let p = app.p();
+            let mut handles = 0;
+            // Inspect the actual painted scrollbar, not just the global palette:
+            // a local widget foreground override also affects egui's scroll thumb.
+            for clipped in output.shapes {
+                let egui::Shape::Rect(shape) = clipped.shape else {
+                    continue;
+                };
+                if shape.rect.width() <= 8.5
+                    && shape.rect.height() >= 39.5
+                    && shape.rect.right() > card.right() - t::MD - 8.0
+                    && card.contains_rect(shape.rect)
+                    && shape.fill.a() > 0
+                {
+                    handles += 1;
+                    let alpha = shape.fill.a() as f32 / 255.0;
+                    let blended = t::rgb(std::array::from_fn(|i| {
+                        (shape.fill[i] as f32 + p.panel[i] as f32 * (1.0 - alpha))
+                            .round()
+                            .min(255.0) as u8
+                    }));
+                    assert!(
+                        t::contrast(blended, p.panel) >= 3.0 - 0.01,
+                        "painted scrollbar contrast {theme:?}: {}",
+                        t::contrast(blended, p.panel)
+                    );
+                }
+            }
+            assert_eq!(handles, 1, "expected one visible vertical scroll thumb");
         }
     }
     #[test]

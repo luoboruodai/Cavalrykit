@@ -29,7 +29,7 @@ macOS / Windows 桌面;与 Cavalry 并存;用户常从聊天/网盘拿到 .jsc/.
 - 卸载移入废纸篓(可还原),目录直达(访达)
 - 现有 egui 实现,逻辑/功能/后台任务/布局回归测试,release 签名打包(packaging/build-mac.sh)
 - 分发:macOS .dmg(Apple Silicon)/ Windows .zip(cargo-xwin 交叉编译,GUI 子系统)
-- 显式未决：Windows 实机拖窗、混合 DPI、任务栏和安装器验收已延期；交叉编译不能替代。当前用户已授权最终检查通过后发布。
+- 显式未决：Windows 实机拖窗、混合 DPI、任务栏和安装器验收已延期；交叉编译不能替代。本轮界面重设计完成后先展示供用户确认，再推进发布；原生 CI 尚未远程执行。
 
 ## Brand Commitments
 
@@ -45,3 +45,9 @@ macOS / Windows 桌面;与 Cavalry 并存;用户常从聊天/网盘拿到 .jsc/.
 2. 状态可视:Cavalry 运行态、装完结果、冲突待办都不藏
 3. 可恢复:卸载入废纸篓,冲突逐个询问,不做不可逆动作
 4. 分发就绪:陌生人也能看懂,不依赖文档
+
+## UI Direction (0.1.1 redesign)
+
+紧凑分类侧栏 + 横向导入卡片 + 主列表；Cavalry 灰阶与低干扰绿色，参考用户提供的暗色工作区/极简侧栏布局而非照搬无关功能。全宽品牌栏右侧显示 Cavalry 状态；设置四页分类，保存/取消/恢复默认仍固定在右对齐动作行。
+
+使用 4/8/16/24 逻辑间距和 Nielsen 十项检查，不把它们包装成平台认证。详见 packaging/UI_REVIEW.md。
