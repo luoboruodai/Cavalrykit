@@ -1,9 +1,16 @@
-# CavalryKit 0.1.1 · Cavalry 装备库
+# CavalryKit 0.1.1
 
 本地 Cavalry 脚本 / 插件安装与管理工具，支持 **macOS Apple Silicon 与 Windows x64**。
 Cavalry 风格深灰界面，支持 **简体中文 / English / 日本語 / 한국어**。不会上传导入内容，也不会执行导入的脚本。
 
 ![CavalryKit 主界面（合成示例）](assets/screenshots/main.png)
+
+<details>
+<summary>查看明亮主题（同一布局）</summary>
+
+![CavalryKit 明亮主题（合成示例）](assets/screenshots/main-light.png)
+
+</details>
 
 ## 下载与升级
 
@@ -23,7 +30,8 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 - **更少 UI 阻塞**：识别、解压、复制、扫描、卸载和进程检查在后台串行执行；原生文件选择使用异步窗口。
 - **Windows 针对性处理**：用原生进程枚举代替反复启动 `tasklist`；保留系统原生窗口标题栏；默认 wgpu 渲染，另有 Glow 兼容模式。
 - **大型库性能**：缓存搜索索引、只绘制可见条目、长名称一次截断排版；结果分页以限制单帧工作量。
-- **重设计界面**：紧凑分类侧栏、横向导入区、克制的灰阶与绿色、低干扰列表、分组设置；搜索提示为「搜索插件或脚本名称」。
+- **保留熟悉布局**：左侧拖入与目录入口，右侧列表顶部放置「全部 / 脚本 / 插件」和搜索；移除重复标题，保留克制的灰阶与绿色。
+- **深浅主题与动效**：白卡片 / 浅灰底和分层深灰独立设计；固定控件边界，短暂悬停 / 按下 / 筛选 / 拖入过渡，开启「减少界面动效」后立即切换，空闲不循环重绘。
 - **区域字体**：Roboto 拉丁字形 + 按语言选择的 Noto-derived SC / JP / KR，内嵌 Regular / Medium 两种字重，避免用日文字形替代简体中文 UI。
 - **一致的界面**：右对齐弹窗操作、4/8/16/24pt 基础间距、标题同行状态、明确的取消入口、可见滚动条和键盘焦点。
 - **安全安装**：同名内容先询问；覆盖前暂存，失败保留/恢复旧内容；同批重名、重复保留两者和重新导入自身均有回归测试。
@@ -44,7 +52,7 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 
 ![设置（合成示例）](assets/screenshots/settings.png)
 
-左侧「脚本目录 / 插件目录 / 关于」下方的「设置」分为 **通用 / 界面配色 / 安装行为 / Cavalry** 四页：
+左侧底部与「关于」并排的「设置」分为 **通用 / 界面配色 / 安装行为 / Cavalry** 四页：
 
 - 界面语言：中 / 英 / 日 / 韩；**不修改文件名称或脚本内容**。
 - 配色：Cavalry 深灰、明亮、自定义强调色与背景色；文字对比度自动适配。
@@ -107,7 +115,7 @@ On macOS, quit the old app and replace `CavalryKit.app` in Applications. On Wind
 
 Drop scripts, plugin folders or supported archives into the window. Resolve name conflicts, then inspect the result dialog. You may restart Cavalry now or later. **Save your project first.** Only a normal quit is requested; cancellation/timeouts never force-close the app, and multiple running instances require manual handling. A running app reopens its original executable, not a different configured version.
 
-The redesigned interface uses a compact library sidebar, horizontal import card, quieter list actions, and four settings pages. Search reads “Search plugins or scripts by name”. Roboto is paired with region-specific SC/JP/KR UI subsets at regular/medium weights.
+The redesigned interface uses a compact library sidebar, right-hand list filters, quieter list actions, and four settings pages. Search reads “Search plugins or scripts by name”. Roboto is paired with region-specific SC/JP/KR UI subsets at regular/medium weights.
 
 Settings include language, color scheme, custom accent/background, 90–125% scale, reduced motion, refresh-on-focus and restart-prompt policy. Changes preview immediately; Cancel reverts them, Save persists them locally. Conflicts and removal confirmations remain mandatory safety controls. Imported scripts are not executed or uploaded.
 

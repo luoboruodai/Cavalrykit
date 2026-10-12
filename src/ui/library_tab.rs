@@ -1,5 +1,5 @@
 use super::{
-    app::{CavalryKitApp, Row},
+    app::{CavalryKitApp, Filter, Row},
     icons::{self, Icon},
     theme as t,
 };
@@ -10,72 +10,69 @@ impl CavalryKitApp {
         let p = self.p();
         let lang = self.prefs().language;
         ui.spacing_mut().item_spacing.y = 0.0;
-        ui.horizontal(|ui| {
-            ui.label(t::heading(lang.tr(K::Library), 24.0, p));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_enabled_ui(self.busy.is_none() && self.conflicts.is_empty(), |ui| {
+        self.update_rows();
+        let card_height = ui.available_height();
+        let card = egui::Frame::new()
+            .fill(p.panel)
+            .stroke(Stroke::new(1.0_f32, p.line))
+            .corner_radius(t::CARD_RADIUS)
+            .inner_margin(t::MD)
+            .show(ui, |ui| {
+                ui.set_min_height(card_height - 2.0 * t::MD - 2.0);
+                let (toolbar, _) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), t::CONTROL),
+                    egui::Sense::hover(),
+                );
+                let count = lang
+                    .tr(K::Count)
+                    .replace("{n}", &self.rows.len().to_string());
+                let count_g = ui.painter().layout_no_wrap(count, t::font(12.0), p.muted);
+                let filter_width =
+                    (toolbar.width() - t::CONTROL - t::MD - count_g.size().x - t::MD).min(264.0);
+                let filter_rect =
+                    Rect::from_min_size(toolbar.min, Vec2::new(filter_width, t::CONTROL));
+                let mut filters = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt("list-filters")
+                        .max_rect(filter_rect),
+                );
+                let current = match self.filter {
+                    Filter::All => 0,
+                    Filter::Scripts => 1,
+                    Filter::Plugins => 2,
+                };
+                let (chosen, rects) = t::segmented(
+                    &mut filters,
+                    &[lang.tr(K::All), lang.tr(K::Scripts), lang.tr(K::Plugins)],
+                    current,
+                    filter_width,
+                    p,
+                );
+                self.audit.filters = rects;
+                self.filter = [Filter::All, Filter::Scripts, Filter::Plugins][chosen];
+                ui.painter().galley(
+                    Pos2::new(
+                        toolbar.right() - t::CONTROL - t::MD - count_g.size().x,
+                        toolbar.center().y - count_g.size().y / 2.0,
+                    ),
+                    count_g,
+                    p.muted,
+                );
+                let refresh_rect = Rect::from_min_size(
+                    Pos2::new(toolbar.right() - t::CONTROL, toolbar.top()),
+                    Vec2::splat(t::CONTROL),
+                );
+                let mut refresh = ui.new_child(egui::UiBuilder::new().max_rect(refresh_rect));
+                refresh.add_enabled_ui(self.busy.is_none() && self.conflicts.is_empty(), |ui| {
                     if t::icon_button(ui, lang.tr(K::Refresh), Icon::Refresh, false, p).clicked() {
                         self.refresh_library();
                     }
                 });
-            });
-        });
-        ui.add_space(t::XS);
-        ui.label(t::text(lang.tr(K::LibraryHint), 12.0, p.muted));
-        ui.add_space(t::MD);
-        self.show_install_stage(ui);
-        ui.add_space(t::MD);
-        self.search_box(ui);
-        ui.add_space(t::MD);
-        self.update_rows();
-        let hint = if let Some(status) = self.busy {
-            lang.tr(status)
-        } else if self.paths.is_none() {
-            lang.tr(K::DirectoriesUnavailable)
-        } else {
-            lang.tr(K::IdleHint)
-        };
-        let footer = ui
-            .painter()
-            .layout(hint.into(), t::font(11.0), p.muted, ui.available_width());
-        let inner_height =
-            (ui.available_height() - footer.size().y - t::MD - 2.0_f32 * t::MD).max(48.0);
-        let card = egui::Frame::new()
-            .fill(p.panel)
-            .corner_radius(8)
-            .inner_margin(t::MD)
-            .show(ui, |ui| {
-                ui.set_min_height(inner_height);
-                let (header, _) = ui.allocate_exact_size(
-                    Vec2::new(ui.available_width(), 24.0),
-                    egui::Sense::hover(),
-                );
-                let label = format!(
-                    "{}  ·  {}",
-                    lang.tr(K::NameColumn),
-                    lang.tr(K::Count)
-                        .replace("{n}", &self.rows.len().to_string())
-                );
-                ui.painter().text(
-                    header.left_top(),
-                    egui::Align2::LEFT_TOP,
-                    label,
-                    t::font(11.0),
-                    p.muted,
-                );
-                ui.painter().text(
-                    header.right_top() - Vec2::new(8.0, 0.0),
-                    egui::Align2::RIGHT_TOP,
-                    lang.tr(K::ActionsColumn),
-                    t::font(11.0),
-                    p.muted,
-                );
-                ui.painter().hline(
-                    header.x_range(),
-                    header.bottom() - 1.0_f32,
-                    Stroke::new(1.0_f32, p.line),
-                );
-                let height = (inner_height - 24.0).max(24.0);
+                ui.add_space(t::MD);
+                self.search_box(ui);
+                self.update_rows();
+                ui.add_space(t::MD);
+                let height = ui.available_height().max(48.0);
                 if self.rows.is_empty() {
                     ui.allocate_ui_with_layout(
                         Vec2::new(ui.available_width(), height),
@@ -146,14 +143,21 @@ impl CavalryKitApp {
                                                 Vec2::new(ui.available_width(), t::ROW),
                                                 egui::Sense::hover(),
                                             );
-                                            if response.hovered() {
-                                                ui.painter().rect_filled(rect, 6, p.surface);
-                                            }
+                                            let hover = t::motion(
+                                                ui,
+                                                response.id.with("row-hover"),
+                                                response.hovered(),
+                                            );
+                                            ui.painter().rect_filled(
+                                                rect,
+                                                t::RADIUS,
+                                                p.surface.gamma_multiply(hover),
+                                            );
                                             let tile = Rect::from_center_size(
                                                 Pos2::new(rect.left() + 16.0, rect.center().y),
                                                 Vec2::splat(32.0),
                                             );
-                                            ui.painter().rect_filled(tile, 6, p.selected);
+                                            ui.painter().rect_filled(tile, t::RADIUS, p.surface);
                                             icons::paint(
                                                 ui.painter(),
                                                 tile.shrink(8.0),
@@ -269,9 +273,6 @@ impl CavalryKitApp {
                 }
             });
         self.audit.card = Some(card.response.rect);
-        ui.add_space(t::MD);
-        let (rect, _) = ui.allocate_exact_size(footer.size(), egui::Sense::hover());
-        ui.painter().galley(rect.min, footer, p.muted);
     }
     fn search_box(&mut self, ui: &mut egui::Ui) {
         let p = self.p();
@@ -279,7 +280,7 @@ impl CavalryKitApp {
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), egui::Sense::hover());
         self.audit.search = Some(rect);
-        ui.painter().rect_filled(rect, 8, p.panel);
+        ui.painter().rect_filled(rect, t::RADIUS, p.surface);
         let id = egui::Id::new("library-search");
         let focused = ui.memory(|m| m.has_focus(id));
         ui.painter().rect_stroke(

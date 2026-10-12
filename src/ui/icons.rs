@@ -1,6 +1,6 @@
 //! Small, consistent vector icons. Never depend on symbol-font coverage.
 use egui::{Color32, Painter, Pos2, Rect, Stroke, Vec2};
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Icon {
     Library,
     Script,
@@ -46,14 +46,36 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             }
         }
         Icon::Plugin => {
-            box_at(0.0, 1.0_f32, 13.0, 12.0);
-            p.circle_stroke(point(0.0, -6.0), 2.5 * scale, stroke);
-            p.circle_stroke(point(7.0, 1.0_f32), 2.5 * scale, stroke);
+            // A single module outline, rather than overlapping circles and a square.
+            p.add(egui::Shape::closed_line(
+                [
+                    point(0.0, -8.0),
+                    point(7.0, -4.0),
+                    point(7.0, 4.0),
+                    point(0.0, 8.0),
+                    point(-7.0, 4.0),
+                    point(-7.0, -4.0),
+                ]
+                .to_vec(),
+                stroke,
+            ));
+            line((-7.0, -4.0), (0.0, 0.0));
+            line((0.0, 0.0), (7.0, -4.0));
+            line((0.0, 0.0), (0.0, 8.0));
         }
         Icon::Folder => {
-            box_at(0.0, 1.0_f32, 16.0, 12.0);
-            line((-7.0, -6.0), (-2.0_f32, -6.0));
-            line((-2.0_f32, -6.0), (0.0, -4.0));
+            p.add(egui::Shape::closed_line(
+                [
+                    point(-8.0, -6.0),
+                    point(-2.0, -6.0),
+                    point(0.0, -3.0),
+                    point(8.0, -3.0),
+                    point(8.0, 7.0),
+                    point(-8.0, 7.0),
+                ]
+                .to_vec(),
+                stroke,
+            ));
         }
         Icon::Info => {
             p.circle_stroke(c, 8.0 * scale, stroke);
@@ -119,6 +141,54 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             line((-7.0, 7.0), (0.0, -7.0));
             line((0.0, -7.0), (7.0, 7.0));
             line((-3.5, 1.0_f32), (3.5, 1.0_f32));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn every_vector_icon_stroke_stays_inside_its_slot() {
+        let ctx = egui::Context::default();
+        for icon in [
+            Icon::Library,
+            Icon::Script,
+            Icon::Plugin,
+            Icon::Folder,
+            Icon::Info,
+            Icon::Settings,
+            Icon::Search,
+            Icon::Refresh,
+            Icon::Trash,
+            Icon::Import,
+            Icon::Close,
+            Icon::Display,
+            Icon::Palette,
+            Icon::Cavalry,
+        ] {
+            for size in [16.0, 18.0, 20.0, 28.0] {
+                let slot = Rect::from_min_size(Pos2::new(40.0, 40.0), Vec2::splat(size));
+                let output = ctx.run(egui::RawInput::default(), |ctx| {
+                    paint(
+                        &ctx.layer_painter(egui::LayerId::new(
+                            egui::Order::Foreground,
+                            egui::Id::new("icon-test"),
+                        )),
+                        slot,
+                        icon,
+                        Color32::WHITE,
+                    );
+                });
+                for shape in output.shapes {
+                    assert!(
+                        slot.expand(0.1)
+                            .contains_rect(shape.shape.visual_bounding_rect()),
+                        "{icon:?} {size}: {:?}",
+                        shape.shape.visual_bounding_rect()
+                    );
+                }
+            }
         }
     }
 }

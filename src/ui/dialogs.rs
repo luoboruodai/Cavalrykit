@@ -33,7 +33,7 @@ impl CavalryKitApp {
                 p.muted,
             ));
             if remaining > 1 {
-                ui.checkbox(&mut self.apply_all, lang.tr(K::ApplyAll));
+                t::checkbox(ui, &mut self.apply_all, lang.tr(K::ApplyAll), p);
             }
             t::footer(ui, |ui| {
                 let r = t::button(ui, lang.tr(K::Replace), t::Button::Danger, p);

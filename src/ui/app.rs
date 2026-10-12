@@ -41,6 +41,9 @@ pub(crate) struct Audit {
     pub install: Option<egui::Rect>,
     pub install_hint: Option<egui::Rect>,
     pub search: Option<egui::Rect>,
+    pub filters: Vec<egui::Rect>,
+    pub import_button: Option<egui::Rect>,
+    pub import_art: Option<egui::Rect>,
     pub navigation: Vec<egui::Rect>,
     pub settings_body: Option<egui::Rect>,
     pub buttons: Vec<(K, egui::Rect)>,
@@ -594,32 +597,41 @@ impl CavalryKitApp {
             self.push_toast(self.tr(K::BusyClose));
         }
         let p = self.p();
+        let compact = ctx.screen_rect().width() < 850.0;
+        let gap = if compact { t::MD } else { t::LG };
         egui::TopBottomPanel::top("brand-header")
             .exact_height(t::HEADER)
             .frame(
                 egui::Frame::new()
-                    .fill(p.panel)
-                    .inner_margin(egui::Margin::symmetric(24, 16)),
+                    .fill(p.bg)
+                    .inner_margin(egui::Margin::symmetric(gap as i8, 12)),
             )
             .show(ctx, |ui| self.show_brand_header(ui));
-        let rail = egui::SidePanel::left("navigation")
-            .exact_width(t::SIDEBAR)
-            .resizable(false)
-            .frame(egui::Frame::new().fill(p.panel).inner_margin(t::MD))
-            .show(ctx, |ui| {
-                let rail_height = ui.available_height();
-                // Short windows still expose all navigation via scrolling and keyboard focus.
-                egui::ScrollArea::vertical()
-                    .id_salt("rail-scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| self.show_rail(ui, rail_height));
-            });
-        self.audit.rail = Some(rail.response.rect);
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(p.bg).inner_margin(t::LG))
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(gap))
             .show(ctx, |ui| {
-                self.audit.library = Some(ui.max_rect());
-                self.show_library(ui);
+                let area = ui.max_rect();
+                let left_width = (area.width() * 0.27).clamp(216.0, 296.0);
+                let left =
+                    egui::Rect::from_min_size(area.min, egui::vec2(left_width, area.height()));
+                let right =
+                    egui::Rect::from_min_max(egui::pos2(left.right() + gap, area.top()), area.max);
+                self.audit.rail = Some(left);
+                self.audit.library = Some(right);
+                let mut rail = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt("import-column")
+                        .max_rect(left),
+                );
+                rail.set_clip_rect(left.intersect(ui.clip_rect()));
+                self.show_rail(&mut rail, left.height());
+                let mut library = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt("library-column")
+                        .max_rect(right),
+                );
+                library.set_clip_rect(right.intersect(ui.clip_rect()));
+                self.show_library(&mut library);
             });
         if let Some((text, at)) = &self.toast {
             let duration = Duration::from_secs(3);
@@ -721,6 +733,13 @@ impl CavalryKitApp {
             path: "preview-library/Plugins/Shape Toolkit".into(),
             search_key: "shape toolkit demo author".into(),
         });
+        let (screen, light) = screen
+            .strip_prefix("light-")
+            .map(|s| (s, true))
+            .unwrap_or((screen, false));
+        if light {
+            app.settings.theme = crate::settings::Theme::Light;
+        }
         match screen {
             "settings" => app.open_settings(),
             "custom" => {
@@ -855,7 +874,9 @@ mod tests {
                             "status not on title row {language:?} {size:?}: {title:?} {status:?}"
                         );
                         assert!(
-                            app.audit.rail.unwrap().right() + t::LG - 0.5
+                            app.audit.rail.unwrap().right()
+                                + (if size[0] < 850.0 { t::MD } else { t::LG })
+                                - 0.5
                                 <= app.audit.library.unwrap().left()
                         );
                         let panel = app.audit.dialog.unwrap();
@@ -881,45 +902,129 @@ mod tests {
         }
     }
     #[test]
-    fn redesigned_main_keeps_wrapped_hints_search_and_lists_inside_the_content_area() {
+    fn original_left_import_right_filters_layout_stays_inside_both_columns() {
         let (ctx, mut app) = fixture();
         let mut tick = 0.0;
         for language in Language::ALL {
-            for theme in [Theme::Cavalry, Theme::Light] {
+            for theme in [Theme::Cavalry, Theme::Light, Theme::Custom] {
                 app.settings.language = language;
                 app.settings.theme = theme;
                 for size in [[720.0, 496.0], [900.0, 620.0], [1120.0, 760.0]] {
                     for busy in [None, Some(K::PlanBusy), Some(K::RestartBusy)] {
                         app.busy = busy;
                         settle(&ctx, &mut app, size, &mut tick);
-                        let area = app.audit.library.unwrap().expand(1.0);
-                        for (name, rect) in [
-                            ("import", app.audit.install.unwrap()),
-                            ("search", app.audit.search.unwrap()),
-                            ("list", app.audit.card.unwrap()),
-                        ] {
+                        let left = app.audit.rail.unwrap();
+                        let right = app.audit.library.unwrap();
+                        let import = app.audit.install.unwrap();
+                        assert!(
+                            left.expand(0.5).contains_rect(import),
+                            "import must stay left: {language:?} {size:?}"
+                        );
+                        assert!(left.right() + t::MD <= right.left() + 0.5);
+                        assert!((import.top() - app.audit.card.unwrap().top()).abs() < 1.0);
+                        for rect in [app.audit.search.unwrap(), app.audit.card.unwrap()] {
                             assert!(
-                                area.contains_rect(rect),
-                                "{name}: {language:?} {size:?}: {rect:?} outside {area:?}"
+                                right.expand(0.5).contains_rect(rect),
+                                "right panel overflow: {language:?} {size:?} {rect:?} {right:?}"
                             );
                         }
-                        let install = app.audit.install.unwrap();
+                        assert_eq!(app.audit.filters.len(), 3);
+                        for rect in &app.audit.filters {
+                            assert!(right.contains_rect(*rect));
+                            assert!(rect.bottom() + t::SM <= app.audit.search.unwrap().top());
+                        }
+                        let button = app.audit.import_button.unwrap();
                         let hint = app.audit.install_hint.unwrap();
+                        let art = app.audit.import_art.unwrap();
+                        for rect in [button, hint, art] {
+                            assert!(
+                                import.contains_rect(rect),
+                                "import content clipped: {language:?} {size:?} {rect:?} {import:?}"
+                            );
+                        }
                         assert!(
-                            install.contains_rect(hint),
-                            "clipped helper: {language:?} {size:?}: {install:?} {hint:?}"
+                            art.bottom() + t::SM <= button.top(),
+                            "decorative content overlaps input: {language:?} {size:?}"
                         );
-                        assert!(hint.bottom() + t::SM <= install.bottom() + 1.0);
-                        assert!(app.audit.search.unwrap().top() >= install.bottom() + t::SM);
-                        assert!(
-                            app.audit.card.unwrap().top()
-                                >= app.audit.search.unwrap().bottom() + t::SM
-                        );
-                        assert!(app.audit.navigation.iter().all(|r| r.is_finite()));
+                        assert!(button.bottom() + t::SM <= hint.top() + 0.5);
+                        for rect in &app.audit.navigation {
+                            assert!(
+                                left.expand(0.5).contains_rect(*rect),
+                                "left actions clipped {language:?} {size:?}: {rect:?} {left:?}"
+                            );
+                        }
                     }
                 }
             }
         }
+    }
+    #[test]
+    fn restored_filters_work_without_duplicate_library_titles_or_hover_repaint_loops() {
+        let (ctx, mut app) = fixture();
+        app.library.scripts.push(crate::library::ScriptEntry {
+            name: "Example.js".into(),
+            group: None,
+            path: "synthetic/Example.js".into(),
+            search_key: "example.js".into(),
+        });
+        app.library.plugins.push(crate::library::PluginEntry {
+            name: "Example plugin".into(),
+            author: None,
+            path: "synthetic/Plugin".into(),
+            search_key: "example plugin".into(),
+        });
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let target = app.audit.filters[2].center();
+        for pressed in [true, false] {
+            tick += 0.02;
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    time: Some(tick),
+                    events: vec![
+                        egui::Event::PointerMoved(target),
+                        egui::Event::PointerButton {
+                            pos: target,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+        }
+        assert!(app.filter == Filter::Plugins);
+        assert_eq!(app.rows, vec![Row::Plugin(0)]);
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let output = render(&ctx, &mut app, [900.0, 620.0], tick + 1.0);
+        for shape in &output.shapes {
+            if let egui::Shape::Text(text) = &shape.shape {
+                for redundant in [
+                    K::Library,
+                    K::LibraryHint,
+                    K::LibraryNav,
+                    K::Shortcuts,
+                    K::IdleHint,
+                ] {
+                    assert_ne!(
+                        text.galley.job.text,
+                        app.tr(redundant),
+                        "redundant label returned"
+                    );
+                }
+            }
+        }
+        assert_eq!(
+            output.viewport_output[&egui::ViewportId::ROOT].repaint_delay,
+            std::time::Duration::MAX,
+            "steady hover should not run an animation loop"
+        );
     }
     #[test]
     fn all_settings_sections_keep_content_and_actions_inside_the_modal() {

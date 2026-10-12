@@ -172,9 +172,11 @@ impl CavalryKitApp {
                                             hint(ui, lang.tr(K::ContrastHint), p);
                                             ui.add_space(t::SM);
                                         }
-                                        ui.checkbox(
+                                        t::checkbox(
+                                            ui,
                                             &mut draft.reduce_motion,
                                             lang.tr(K::MotionLabel),
+                                            p,
                                         );
                                     }
                                     Section::Installation => {
@@ -205,9 +207,11 @@ impl CavalryKitApp {
                                                 }
                                             });
                                         ui.add_space(t::MD);
-                                        ui.checkbox(
+                                        t::checkbox(
+                                            ui,
                                             &mut draft.refresh_on_focus,
                                             lang.tr(K::RefreshFocus),
+                                            p,
                                         );
                                         ui.add_space(t::MD);
                                         egui::Frame::new()
@@ -223,6 +227,7 @@ impl CavalryKitApp {
                                         ui.add(
                                             egui::TextEdit::singleline(&mut draft.cavalry_path)
                                                 .id_salt("cavalry-path")
+                                                .background_color(p.surface)
                                                 .hint_text(t::text(
                                                     lang.tr(K::AutoDetect),
                                                     14.0,
@@ -328,8 +333,12 @@ fn theme_choices(ui: &mut egui::Ui, draft: &mut Settings) {
             });
             ui.painter().rect(
                 rect,
-                8,
-                p.panel,
+                t::RADIUS,
+                t::mix(
+                    p.panel,
+                    p.surface,
+                    t::motion(ui, response.id.with("theme-hover"), response.hovered()),
+                ),
                 Stroke::new(
                     if selected || response.has_focus() {
                         2.0_f32
@@ -353,18 +362,28 @@ fn theme_choices(ui: &mut egui::Ui, draft: &mut Settings) {
                 Pos2::new(rect.right() - t::SM, rect.top() + 60.0),
             );
             ui.painter().rect_filled(sample, 4, preview.bg);
+            let import = Rect::from_min_max(
+                sample.min + Vec2::splat(4.0),
+                Pos2::new(sample.left() + sample.width() * 0.30, sample.bottom() - 4.0),
+            );
+            let list = Rect::from_min_max(
+                Pos2::new(import.right() + 4.0, import.top()),
+                sample.max - Vec2::splat(4.0),
+            );
+            ui.painter().rect_filled(import, 3, preview.panel);
+            ui.painter().rect_filled(list, 3, preview.panel);
             ui.painter().rect_filled(
-                Rect::from_min_size(
-                    sample.min,
-                    Vec2::new(sample.width() * 0.26, sample.height()),
+                Rect::from_min_max(
+                    Pos2::new(import.left() + 3.0, import.bottom() - 7.0),
+                    Pos2::new(import.right() - 3.0, import.bottom() - 3.0),
                 ),
-                4,
-                preview.raised,
+                2,
+                preview.accent,
             );
             for line in 0..3 {
-                let y = sample.top() + 12.0 + line as f32 * 10.0;
+                let y = list.top() + 8.0 + line as f32 * 10.0;
                 ui.painter().hline(
-                    sample.left() + sample.width() * 0.38..=sample.right() - t::SM,
+                    list.left() + 4.0..=list.right() - 4.0,
                     y,
                     Stroke::new(
                         2.0_f32,
@@ -376,15 +395,19 @@ fn theme_choices(ui: &mut egui::Ui, draft: &mut Settings) {
                     ),
                 );
             }
-            let g = t::label_truncated(
-                ui,
-                lang.tr(key),
+            let mut job = egui::text::LayoutJob::simple(
+                lang.tr(key).into(),
                 t::font(12.0),
                 p.text,
-                width - 2.0_f32 * t::SM,
+                width - 2.0 * t::SM,
             );
+            job.halign = egui::Align::Center;
+            let g = ui.painter().layout_job(job);
             ui.painter().galley(
-                Pos2::new(rect.center().x - g.size().x / 2.0_f32, rect.bottom() - 28.0),
+                Pos2::new(
+                    rect.center().x,
+                    sample.bottom() + (rect.bottom() - sample.bottom() - g.size().y) / 2.0,
+                ),
                 g,
                 p.text,
             );

@@ -3,7 +3,10 @@
 ## 0.1.1 — 2026-10-12
 
 ### UI and settings / 界面与设置
-- Redesign the whole workspace around a compact sidebar, horizontal drop/import card, subdued charcoal layers, softer green and a full-width brand/status header.
+- Restore the familiar left import area and right-hand list filters/search; remove duplicate library headings, navigation captions and the permanent policy footer.
+- Separate white-card light surfaces from layered charcoal dark surfaces; use stable rounded controls without hover expansion.
+- Add finite hover/press/filter/drop feedback, an instant reduced-motion path, and regression coverage for no idle animation loops.
+- Replace overlapping folder/plugin icon strokes with bounded single outlines; keep small checkbox corners distinct from larger button corners.
 - Split settings into General / Appearance / Installation / Cavalry pages with visual theme previews.
 - Change the Chinese search hint to “搜索插件或脚本名称”; keep helper text in normal wrapped flow instead of a fixed status slot.
 - Use separate SC/JP/KR Regular and Medium UI font subsets; verify mixed-script ink bounds and all translated glyphs.
@@ -28,7 +31,7 @@
 - Present all import results in a bounded modal dialog; keep the main layout stable.
 - Clip independent columns and bound long labels/details; support small windows.
 - Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
-- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 6.
+- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 7.
 - Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
 

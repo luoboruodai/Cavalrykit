@@ -19,6 +19,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))?;
     for (language, screen) in [
         (Language::Zh, "main"),
+        (Language::Zh, "light-main"),
+        (Language::Zh, "light-appearance"),
+        (Language::En, "light-settings"),
+        (Language::Zh, "light-main-small"),
+        (Language::En, "light-main-small"),
+        (Language::Zh, "light-result"),
         (Language::Zh, "settings"),
         (Language::Zh, "appearance"),
         (Language::Zh, "installation"),

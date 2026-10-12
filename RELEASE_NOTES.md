@@ -7,14 +7,15 @@
 本版更新双端性能、Cavalry 风格界面、可选安全重启和设置：
 - 后台串行处理识别、解压、安装、扫描和卸载；缓存筛选、虚拟列表、分页结果。
 - 深灰/绿色默认主题，明亮/自定义配色，四语言（中/英/日/韩），4/8/16/24pt 间距与右对齐弹窗操作。
-- 全宽品牌/状态栏、紧凑分类侧栏、横向导入卡片、轻分隔列表；修复搜索文案与说明文字裁切。
+- 恢复左侧拖入区、右侧列表筛选与搜索；删除重复标题与常驻冗余说明。
+- 深浅主题独立分层，修正控件圆角/描边和图标重叠；增加短时交互过渡，减少动效模式立即切换。
 - 简中/日/韩区域字形分别内嵌，并提供真实 Regular / Medium 字重；中英混排做缩放边界检查。
 - 标题同行运行状态；安装后可选择重启/打开 Cavalry，也可稍后。只请求正常退出，保留保存提示，绝不强制终止进程。
 - 设置重设计为四个分类页，主题以卡片预览，支持实时预览与取消、界面缩放、减少动效、返回自动刷新、重启提示策略、可选 Cavalry 路径。
 - 安装覆盖暂存/回滚、同批重名冲突、递归目标/跨平台路径穿越保护。
 - 修正 macOS 图标视觉大小，完整 Retina ICNS；Windows 15 档内嵌 ICO、静态 VC++ 运行库与固定路径升级安装器。
 
-macOS 应用版本 **0.1.1 / build 6**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
+macOS 应用版本 **0.1.1 / build 7**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
 
 **验证边界**：Windows 真实 Cavalry、显卡/多屏拖窗、混合 DPI、任务栏缓存的人工验收仍延期；CI 不等价于这些体验测试。安全重启自动测试使用模拟进程，不对用户未保存工程发起退出。不能承诺所有环境绝对无 bug 或零卡顿。
 
@@ -33,6 +34,6 @@ Settings support preview/cancel, scale, reduced motion, refresh-on-focus and res
 
 Includes staged replacement/rollback, recursive-target and cross-platform archive-path safeguards, corrected macOS optical icon margins, 15 Windows ICO sizes, static VC++ runtime and an in-place per-user Windows upgrader.
 
-The redesigned workspace adds a compact sidebar and horizontal import card. Settings now use four focused pages and visual theme cards. Regional SC/JP/KR fonts replace the shared Japanese UI subset. macOS bundle build: 6.
+The workspace retains the left-hand import area and right-hand list filters/search without duplicate headings. Separate light/dark surfaces and fixed control geometry accompany finite interaction transitions and an instant reduced-motion path. Settings now use four focused pages and visual theme cards. Regional SC/JP/KR fonts replace the shared Japanese UI subset. macOS bundle build: 7.
 
 The native CI workflow is prepared but has not run remotely; it is not reported as passing. Physical Windows/Cavalry, GPU/mixed-DPI and taskbar behavior are still deferred; automated checks do not substitute for those tests. Both packages are unsigned for commercial distribution (macOS is ad-hoc signed without notarization).

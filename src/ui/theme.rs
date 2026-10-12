@@ -7,8 +7,9 @@ pub const MD: f32 = 16.0;
 pub const LG: f32 = 24.0;
 pub const CONTROL: f32 = 36.0;
 pub const ROW: f32 = 64.0;
-pub const HEADER: f32 = 64.0;
-pub const SIDEBAR: f32 = 208.0;
+pub const HEADER: f32 = 56.0;
+pub const RADIUS: u8 = 8;
+pub const CARD_RADIUS: u8 = 12;
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
     pub bg: Color32,
@@ -72,8 +73,8 @@ fn readable(c: Color32, bg: Color32, ratio: f32) -> Color32 {
 }
 pub fn palette(s: &Settings) -> Palette {
     let (bg, accent) = match s.theme {
-        Theme::Cavalry => (rgb([25, 27, 30]), rgb([110, 216, 164])),
-        Theme::Light => (rgb([249, 250, 251]), rgb([31, 119, 82])),
+        Theme::Cavalry => (rgb([24, 25, 28]), rgb([110, 216, 164])),
+        Theme::Light => (rgb([242, 244, 247]), rgb([25, 112, 75])),
         Theme::Custom => (rgb(s.background), rgb(s.accent)),
     };
     let global_ink = ink(bg);
@@ -87,10 +88,28 @@ pub fn palette(s: &Settings) -> Palette {
             bg
         }
     };
-    let surface = safe_surface(if dark { 0.045 } else { 0.025 });
-    let panel = safe_surface(0.020);
-    let raised = safe_surface(if dark { 0.075 } else { 0.05 });
-    let selected = safe_surface(if dark { 0.075 } else { 0.065 });
+    // Presets have deliberately different elevation directions: light cards are white,
+    // not a darkened version of the canvas. Custom colors retain contrast-safe surfaces.
+    let (panel, surface, raised, selected) = match s.theme {
+        Theme::Cavalry => (
+            rgb([33, 35, 39]),
+            rgb([42, 45, 50]),
+            rgb([52, 56, 62]),
+            rgb([35, 57, 47]),
+        ),
+        Theme::Light => (
+            Color32::WHITE,
+            rgb([243, 245, 247]),
+            rgb([231, 235, 239]),
+            rgb([226, 241, 232]),
+        ),
+        Theme::Custom => (
+            safe_surface(0.020),
+            safe_surface(0.045),
+            safe_surface(0.075),
+            safe_surface(0.065),
+        ),
+    };
     let readable_all = |color: Color32, minimum: f32| {
         for step in 0..=40 {
             let candidate = mix(color, global_ink, step as f32 / 40.0);
@@ -142,7 +161,7 @@ pub fn palette(s: &Settings) -> Palette {
             4.5,
         ),
         warning: readable_all(rgb([218, 180, 69]), 4.5),
-        focus: readable(accent, surface, 3.0),
+        focus: readable_all(accent, 3.0),
         dark,
     }
 }
@@ -191,7 +210,10 @@ pub fn apply_settings(ctx: &egui::Context, s: &Settings) {
     };
     style.visuals.override_text_color = None;
     style.visuals.panel_fill = p.bg;
-    style.visuals.window_fill = p.raised;
+    style.visuals.window_fill = p.panel;
+    style.visuals.window_stroke = egui::Stroke::new(1.0_f32, p.line);
+    style.visuals.window_corner_radius = egui::CornerRadius::same(CARD_RADIUS);
+    style.visuals.menu_corner_radius = egui::CornerRadius::same(RADIUS);
     style.visuals.extreme_bg_color = p.bg;
     style.visuals.faint_bg_color = p.panel;
     style.visuals.hyperlink_color = p.accent_text;
@@ -210,7 +232,10 @@ pub fn apply_settings(ctx: &egui::Context, s: &Settings) {
         widget.weak_bg_fill = p.surface;
         widget.bg_stroke = egui::Stroke::new(1.0_f32, p.line);
         widget.fg_stroke = egui::Stroke::new(1.0_f32, p.text);
+        // Checkbox marks are smaller than action buttons: a radius of 8 turns them into circles.
         widget.corner_radius = egui::CornerRadius::same(3);
+        // A hovered stock widget must not grow outside our fixed rounded bounds.
+        widget.expansion = 0.0;
     }
     style.visuals.widgets.hovered.bg_fill = p.raised;
     style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, p.focus);
@@ -229,7 +254,7 @@ pub fn apply_settings(ctx: &egui::Context, s: &Settings) {
     style.spacing.scroll.foreground_color = true;
     style.visuals.widgets.noninteractive.fg_stroke.color = p.text;
     style.spacing.scroll.handle_min_length = 40.0;
-    style.animation_time = if s.reduce_motion { 0.0 } else { 0.12 };
+    style.animation_time = if s.reduce_motion { 0.0 } else { 0.14 };
     style.text_styles.insert(egui::TextStyle::Body, font(14.0));
     style
         .text_styles
@@ -254,48 +279,101 @@ pub enum Button {
     Quiet,
     QuietDanger,
 }
+/// Finite state animation; no idle timers or layout transforms. All custom controls
+/// use the same reduced-motion setting as stock egui widgets.
+pub fn motion(ui: &egui::Ui, id: egui::Id, active: bool) -> f32 {
+    ui.ctx().animate_bool_with_time_and_easing(
+        id,
+        active,
+        ui.style().animation_time,
+        egui::emath::easing::cubic_out,
+    )
+}
 pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui::Response {
-    let (fill, ink, stroke) = match kind {
-        Button::Primary => (p.accent, p.on_accent, egui::Stroke::NONE),
-        Button::Danger => (p.surface, p.danger, egui::Stroke::new(1.0_f32, p.danger)),
-        Button::Secondary => (p.surface, p.text, egui::Stroke::new(1.0_f32, p.line)),
-        Button::Quiet => (Color32::TRANSPARENT, p.muted, egui::Stroke::NONE),
-        Button::QuietDanger => (Color32::TRANSPARENT, p.danger, egui::Stroke::NONE),
+    let primary = matches!(kind, Button::Primary);
+    let danger = matches!(kind, Button::Danger | Button::QuietDanger);
+    let ink = if primary {
+        p.on_accent
+    } else if danger {
+        p.danger
+    } else if matches!(kind, Button::Quiet) {
+        p.muted
+    } else {
+        p.text
     };
-    let response = ui
-        .add(
-            egui::Button::new(RichText::new(label).font(medium(14.0)).color(ink))
-                .fill(fill)
-                .stroke(stroke)
-                .corner_radius(6)
-                .min_size(Vec2::new(64.0, CONTROL)),
-        )
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-    if response.has_focus() || response.hovered() {
-        ui.painter().rect_stroke(
-            response.rect,
-            6,
-            egui::Stroke::new(
-                if response.has_focus() {
-                    2.0_f32
-                } else {
-                    1.0_f32
-                },
-                if matches!(kind, Button::Danger | Button::QuietDanger) {
-                    p.danger
-                } else {
-                    p.focus
-                },
-            ),
-            egui::StrokeKind::Inside,
-        );
+    let galley = ui.painter().layout(
+        label.into(),
+        medium(14.0),
+        ink,
+        (ui.available_width() - 2.0 * MD).max(32.0),
+    );
+    let size = Vec2::new(
+        (galley.size().x + 2.0 * MD).max(64.0),
+        (galley.size().y + 2.0 * SM).max(CONTROL),
+    );
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+    });
+    let hover = motion(
+        ui,
+        response.id.with("hover"),
+        ui.is_enabled() && (response.hovered() || response.has_focus()),
+    );
+    let press = motion(
+        ui,
+        response.id.with("press"),
+        ui.is_enabled() && response.is_pointer_button_down_on(),
+    );
+    let fill = if primary {
+        let toward = if p.on_accent == Color32::WHITE {
+            Color32::BLACK
+        } else {
+            Color32::WHITE
+        };
+        mix(p.accent, toward, hover * 0.06 + press * 0.08)
+    } else {
+        match kind {
+            Button::Quiet | Button::QuietDanger => p.raised.gamma_multiply(hover),
+            _ => mix(p.surface, p.raised, (hover * 0.65 + press * 0.35).min(1.0)),
+        }
+    };
+    let border = if response.has_focus() {
+        egui::Stroke::new(2.0_f32, p.focus)
+    } else if danger && !matches!(kind, Button::QuietDanger) {
+        egui::Stroke::new(1.0_f32, p.danger)
+    } else if matches!(kind, Button::Secondary) {
+        egui::Stroke::new(1.0_f32, p.line)
+    } else {
+        egui::Stroke::NONE
+    };
+    ui.painter()
+        .rect(rect, RADIUS, fill, border, egui::StrokeKind::Inside);
+    ui.painter().galley(
+        rect.center() - galley.size() / 2.0 + Vec2::new(0.0, press),
+        galley,
+        ink,
+    );
+    if ui.is_enabled() {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
     }
-    response
+}
+/// Small square inputs must not inherit the large button radius or low-contrast divider.
+pub fn checkbox(ui: &mut egui::Ui, value: &mut bool, label: &str, p: Palette) -> egui::Response {
+    ui.scope(|ui| {
+        let widget = &mut ui.visuals_mut().widgets.inactive;
+        widget.bg_stroke = egui::Stroke::new(1.0_f32, p.border);
+        widget.corner_radius = egui::CornerRadius::same(3);
+        ui.checkbox(value, label)
+    })
+    .inner
 }
 pub fn card(p: Palette) -> egui::Frame {
     egui::Frame::new()
         .fill(p.panel)
-        .corner_radius(8)
+        .corner_radius(CARD_RADIUS)
         .inner_margin(MD)
 }
 pub fn modal<R>(
@@ -359,28 +437,39 @@ pub fn icon_button(
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
     });
-    let active = response.hovered() || response.has_focus();
-    let color = if active && danger { p.danger } else { p.muted };
-    if active {
-        ui.painter().rect_filled(rect, 6, p.raised);
-    }
+    let hover = motion(
+        ui,
+        response.id.with("hover"),
+        ui.is_enabled() && (response.hovered() || response.has_focus()),
+    );
+    let press = motion(
+        ui,
+        response.id.with("press"),
+        ui.is_enabled() && response.is_pointer_button_down_on(),
+    );
+    let color = mix(p.muted, if danger { p.danger } else { p.text }, hover);
+    ui.painter()
+        .rect_filled(rect, RADIUS, p.raised.gamma_multiply(hover));
     if response.has_focus() {
         ui.painter().rect_stroke(
             rect,
-            6,
+            RADIUS,
             egui::Stroke::new(2.0_f32, p.focus),
             egui::StrokeKind::Inside,
         );
     }
     super::icons::paint(
         ui.painter(),
-        egui::Rect::from_center_size(rect.center(), Vec2::splat(18.0)),
+        egui::Rect::from_center_size(rect.center() + Vec2::new(0.0, press), Vec2::splat(18.0)),
         icon,
         color,
     );
-    response
-        .on_hover_text(label)
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+    let response = response.on_hover_text(label);
+    if ui.is_enabled() {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    }
 }
 pub fn nav_button(
     ui: &mut egui::Ui,
@@ -391,8 +480,10 @@ pub fn nav_button(
     p: Palette,
 ) -> egui::Response {
     let selected = selection.unwrap_or(false);
-    let (rect, response) =
-        ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), CONTROL),
+        egui::Sense::click(),
+    );
     response.widget_info(|| {
         if selection.is_some() {
             egui::WidgetInfo::selected(
@@ -405,34 +496,38 @@ pub fn nav_button(
             egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
         }
     });
-    if selected || response.hovered() || response.has_focus() {
-        ui.painter()
-            .rect_filled(rect, 6, if selected { p.selected } else { p.surface });
-    }
+    let hover = motion(
+        ui,
+        response.id.with("hover"),
+        ui.is_enabled() && (response.hovered() || response.has_focus()),
+    );
     if selected {
-        ui.painter().rect_filled(
-            egui::Rect::from_min_size(rect.min + Vec2::new(0.0, 12.0), Vec2::new(2.0_f32, 16.0)),
-            1,
-            p.accent_text,
-        );
+        ui.painter().rect_filled(rect, RADIUS, p.selected);
+    } else {
+        ui.painter()
+            .rect_filled(rect, RADIUS, p.surface.gamma_multiply(hover));
     }
     if response.has_focus() {
         ui.painter().rect_stroke(
             rect,
-            6,
+            RADIUS,
             egui::Stroke::new(2.0_f32, p.focus),
             egui::StrokeKind::Inside,
         );
     }
-    let color = if selected { p.text } else { p.muted };
+    let color = if selected {
+        p.text
+    } else {
+        mix(p.muted, p.text, hover)
+    };
     super::icons::paint(
         ui.painter(),
         egui::Rect::from_center_size(
-            egui::pos2(rect.left() + 20.0, rect.center().y),
+            egui::pos2(rect.left() + 18.0, rect.center().y),
             Vec2::splat(16.0),
         ),
         icon,
-        if selected { p.accent_text } else { p.muted },
+        if selected { p.accent_text } else { color },
     );
     let badge_width = badge
         .map(|n| {
@@ -443,7 +538,7 @@ pub fn nav_button(
             ui.painter().galley(
                 egui::pos2(
                     rect.right() - 12.0 - width,
-                    rect.center().y - g.size().y / 2.0_f32,
+                    rect.center().y - g.size().y / 2.0,
                 ),
                 g,
                 p.muted,
@@ -451,28 +546,309 @@ pub fn nav_button(
             width + MD
         })
         .unwrap_or(0.0);
-    // Navigation must remain identifiable in longer translations; only filenames truncate.
     let mut job = egui::text::LayoutJob::simple(
         label.into(),
         if selected { medium(13.0) } else { font(13.0) },
         color,
-        (rect.width() - 48.0 - badge_width).max(32.0),
+        (rect.width() - 44.0 - badge_width).max(32.0),
     );
     job.wrap.max_rows = 2;
     let g = ui.painter().layout_job(job);
     ui.painter().galley(
-        egui::pos2(rect.left() + 36.0, rect.center().y - g.size().y / 2.0_f32),
+        egui::pos2(rect.left() + 36.0, rect.center().y - g.size().y / 2.0),
         g,
         color,
     );
-    response
-        .on_hover_text(label)
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+    let response = response.on_hover_text(label);
+    if ui.is_enabled() {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    }
+}
+/// Equal hit cells and a single bounded selection plate avoid overlapping pill corners.
+pub fn segmented(
+    ui: &mut egui::Ui,
+    labels: &[&str],
+    current: usize,
+    width: f32,
+    p: Palette,
+) -> (usize, Vec<egui::Rect>) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, CONTROL), egui::Sense::hover());
+    let id = ui.make_persistent_id("library-filter");
+    let cell_width = (rect.width() - 2.0 * XS) / labels.len() as f32;
+    let cells: Vec<_> = (0..labels.len())
+        .map(|n| {
+            egui::Rect::from_min_size(
+                rect.min + Vec2::new(XS + n as f32 * cell_width, 0.0),
+                Vec2::new(cell_width, CONTROL),
+            )
+        })
+        .collect();
+    let mut chosen = current;
+    let responses: Vec<_> = cells
+        .iter()
+        .enumerate()
+        .map(|(n, cell)| {
+            let r = ui.interact(*cell, id.with(n), egui::Sense::click());
+            r.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::SelectableLabel,
+                    ui.is_enabled(),
+                    n == current,
+                    labels[n],
+                )
+            });
+            if r.clicked() {
+                chosen = n;
+            }
+            r
+        })
+        .collect();
+    ui.painter().rect_filled(rect, RADIUS, p.surface);
+    let x = ui.ctx().animate_value_with_time(
+        id.with("selection-x"),
+        cells[chosen].left(),
+        ui.style().animation_time,
+    );
+    let plate = egui::Rect::from_min_size(
+        egui::pos2(x, rect.top() + XS),
+        Vec2::new(cell_width, CONTROL - 2.0 * XS),
+    )
+    .intersect(rect.shrink(XS));
+    ui.painter().rect(
+        plate,
+        RADIUS - 2,
+        if p.dark { p.raised } else { p.panel },
+        egui::Stroke::new(1.0_f32, p.line),
+        egui::StrokeKind::Inside,
+    );
+    for (n, r) in responses.into_iter().enumerate() {
+        let hover = motion(ui, r.id.with("hover"), r.hovered() || r.has_focus());
+        let color = if n == chosen {
+            p.text
+        } else {
+            mix(p.muted, p.text, hover)
+        };
+        let g = ui.painter().layout_no_wrap(
+            labels[n].into(),
+            if n == chosen {
+                medium(13.0)
+            } else {
+                font(13.0)
+            },
+            color,
+        );
+        ui.painter()
+            .galley(cells[n].center() - g.size() / 2.0, g, color);
+        if r.has_focus() {
+            ui.painter().rect_stroke(
+                cells[n].shrink2(Vec2::new(0.0, 2.0)),
+                RADIUS - 2,
+                egui::Stroke::new(2.0_f32, p.focus),
+                egui::StrokeKind::Inside,
+            );
+        }
+        r.on_hover_cursor(egui::CursorIcon::PointingHand);
+    }
+    (chosen, cells)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn motion_is_finite_and_reduced_motion_changes_in_one_frame() {
+        for reduced in [false, true] {
+            let ctx = egui::Context::default();
+            crate::ui::fonts::setup(&ctx);
+            apply_settings(
+                &ctx,
+                &Settings {
+                    reduce_motion: reduced,
+                    ..Default::default()
+                },
+            );
+            let mut intermediate = false;
+            let mut previous = 0.0;
+            for frame in 0..60 {
+                let target = (4..32).contains(&frame);
+                let mut value = 0.0;
+                let output = ctx.run(
+                    egui::RawInput {
+                        time: Some(frame as f64 / 60.0),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            value = motion(ui, egui::Id::new("tested-transition"), target)
+                        });
+                    },
+                );
+                assert!((0.0..=1.0).contains(&value));
+                if reduced {
+                    assert_eq!(value, if target { 1.0 } else { 0.0 });
+                }
+                if (0.0..1.0).contains(&value) && value > 0.0 {
+                    intermediate = true;
+                }
+                if (5..32).contains(&frame) {
+                    assert!(value >= previous);
+                }
+                if frame == 30 {
+                    assert_eq!(value, 1.0);
+                }
+                if frame == 59 {
+                    assert_eq!(value, 0.0);
+                    assert_eq!(
+                        output.viewport_output[&egui::ViewportId::ROOT].repaint_delay,
+                        std::time::Duration::MAX,
+                        "animation must stop requesting frames"
+                    );
+                }
+                previous = value;
+            }
+            assert_eq!(intermediate, !reduced);
+        }
+    }
+    #[test]
+    fn primary_shape_and_contrast_stay_stable_across_hover_press_and_themes() {
+        for theme in [Theme::Cavalry, Theme::Light, Theme::Custom] {
+            let ctx = egui::Context::default();
+            crate::ui::fonts::setup(&ctx);
+            let settings = Settings {
+                theme,
+                accent: [128, 128, 128],
+                ..Default::default()
+            };
+            apply_settings(&ctx, &settings);
+            let p = palette(&settings);
+            let mut baseline = None;
+            for frame in 0..20 {
+                let mut events = vec![];
+                if let Some(rect) = baseline {
+                    let rect: egui::Rect = rect;
+                    events.push(egui::Event::PointerMoved(rect.center()));
+                    if frame == 8 || frame == 16 {
+                        events.push(egui::Event::PointerButton {
+                            pos: rect.center(),
+                            button: egui::PointerButton::Primary,
+                            pressed: frame == 8,
+                            modifiers: egui::Modifiers::NONE,
+                        });
+                    }
+                }
+                let mut rect = egui::Rect::NOTHING;
+                let output = ctx.run(
+                    egui::RawInput {
+                        time: Some(frame as f64 / 60.0),
+                        events,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            rect = button(ui, "Select files", Button::Primary, p).rect
+                        });
+                    },
+                );
+                if let Some(before) = baseline {
+                    assert_eq!(rect, before, "hover may not expand the click target");
+                }
+                baseline = Some(rect);
+                let fills: Vec<_> = output
+                    .shapes
+                    .iter()
+                    .filter_map(|s| match &s.shape {
+                        egui::Shape::Rect(r) if r.rect == rect && r.fill.a() > 0 => Some(r),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(fills.len(), 1, "paint only one rounded button shell");
+                assert_eq!(fills[0].corner_radius, egui::CornerRadius::same(RADIUS));
+                assert!(contrast(p.on_accent, fills[0].fill) >= 4.5);
+            }
+        }
+        let light = palette(&Settings {
+            theme: Theme::Light,
+            ..Default::default()
+        });
+        let dark = palette(&Settings::default());
+        assert_eq!(light.panel, Color32::WHITE);
+        assert!(luminance(light.panel) > luminance(light.bg));
+        assert!(luminance(dark.panel) > luminance(dark.bg));
+    }
+    #[test]
+    fn custom_buttons_support_keyboard_activation_and_ignore_disabled_actions() {
+        for enabled in [true, false] {
+            let ctx = egui::Context::default();
+            crate::ui::fonts::setup(&ctx);
+            apply(&ctx);
+            let p = palette(&Settings::default());
+            let mut id = egui::Id::NULL;
+            let mut activated = false;
+            for frame in 0..4 {
+                if frame == 2 {
+                    ctx.memory_mut(|m| m.request_focus(id));
+                }
+                let events = if frame == 3 {
+                    vec![egui::Event::Key {
+                        key: egui::Key::Enter,
+                        physical_key: Some(egui::Key::Enter),
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }]
+                } else {
+                    vec![]
+                };
+                let _ = ctx.run(
+                    egui::RawInput {
+                        time: Some(frame as f64),
+                        events,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            ui.add_enabled_ui(enabled, |ui| {
+                                let r = button(ui, "Confirm", Button::Primary, p);
+                                id = r.id;
+                                activated |= r.clicked();
+                            });
+                        });
+                    },
+                );
+            }
+            assert_eq!(activated, enabled);
+        }
+    }
+    #[test]
+    fn small_checkbox_does_not_become_a_radio_circle() {
+        let ctx = egui::Context::default();
+        crate::ui::fonts::setup(&ctx);
+        apply(&ctx);
+        let p = palette(&Settings::default());
+        let output = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                checkbox(ui, &mut false, "Reduce motion", p);
+            });
+        });
+        let mark = output
+            .shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Rect(r)
+                    if r.rect.width() > 10.0
+                        && r.rect.width() < 24.0
+                        && (r.rect.width() - r.rect.height()).abs() < 0.5 =>
+                {
+                    Some(r)
+                }
+                _ => None,
+            })
+            .expect("checkbox input shape");
+        assert_eq!(mark.corner_radius, egui::CornerRadius::same(3));
+        assert!(contrast(mark.stroke.color, p.panel) >= 2.9);
+    }
     #[test]
     fn presets_and_extreme_custom_colors_have_readable_text() {
         for theme in [Theme::Cavalry, Theme::Light, Theme::Custom] {
