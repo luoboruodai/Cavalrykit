@@ -14,6 +14,9 @@ pub enum Job {
     Plan(Vec<PathBuf>),
     Install(InstallPlan, Vec<(PlannedUnit, ConflictChoice)>),
     Uninstall(PathBuf),
+    SaveSettings(PathBuf, crate::settings::Settings),
+    Restart(String, bool, std::sync::Arc<std::sync::atomic::AtomicBool>),
+    Discard(InstallPlan),
 }
 
 pub enum Event {
@@ -22,6 +25,9 @@ pub enum Event {
     Installed(Outcome, Library),
     Uninstalled(Result<(), String>, Library),
     Running(bool),
+    SettingsSaved(Result<(), String>),
+    Restarted(Result<crate::restart::RestartResult, crate::restart::RestartError>),
+    Discarded,
     Failed(String),
 }
 
@@ -66,6 +72,16 @@ impl Worker {
                     // The temporary archive guard stays on this thread through copying and cleanup.
                     let event =
                         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match job {
+                            Job::SaveSettings(path, settings) => {
+                                Event::SettingsSaved(settings.save(&path))
+                            }
+                            Job::Restart(path, allow_quit, cancel) => {
+                                Event::Restarted(crate::restart::perform(&path, allow_quit, cancel))
+                            }
+                            Job::Discard(plan) => {
+                                drop(plan);
+                                Event::Discarded
+                            }
                             Job::Scan => Event::Library(library::scan(&paths)),
                             Job::Plan(files) => Event::Planned(installer::plan(&files, &paths)),
                             Job::Install(mut plan, resolved) => {
@@ -83,6 +99,9 @@ impl Worker {
                         .unwrap_or_else(|_| {
                             Event::Failed("后台操作异常，未完成的操作请重新检查。".into())
                         });
+                    if matches!(event, Event::Restarted(_)) {
+                        next_probe = Instant::now();
+                    }
                     if !emit(event) {
                         break;
                     }

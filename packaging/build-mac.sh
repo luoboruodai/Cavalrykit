@@ -10,19 +10,20 @@ ARCH="$(uname -m)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cargo build --release --locked
-# Always regenerate ICNS from the checked-in PNG; no stale icon cache in packaging.
+# Always regenerate ICNS from the macOS master with optical margins; no stale icon cache in packaging.
 ICONSET="$WORK/icon.iconset"
 mkdir -p "$ICONSET"
 for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" assets/icon.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    sips -z "$size" "$size" assets/icon-macos.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
     double=$((size * 2))
-    sips -z "$double" "$double" assets/icon.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+    sips -z "$double" "$double" assets/icon-macos.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
 APP="$WORK/dmg/CavalryKit.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" dist
 cp target/release/cavalrykit "$APP/Contents/MacOS/CavalryKit"
 cp packaging/Info.plist "$APP/Contents/Info.plist"
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/icon.icns"
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/CavalryKitIcon.icns"
+cp packaging/THIRD-PARTY-NOTICES.txt "$APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 chmod +x "$APP/Contents/MacOS/CavalryKit"
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP"

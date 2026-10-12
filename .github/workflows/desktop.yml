@@ -1,0 +1,58 @@
+name: Desktop checks
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add rustfmt clippy
+          rustc --version
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy (production and preview code)
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+      - name: Tests (synthetic fixtures; never starts Cavalry)
+        run: cargo test --all-targets --all-features --locked
+      - name: Windows installer and rollback checks
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./packaging/test-installer-win.ps1
+      - name: Windows release package
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          ./packaging/build-win.ps1
+          python packaging/verify_windows.py target/x86_64-pc-windows-msvc/release/cavalrykit.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: macOS release package
+        if: runner.os == 'macOS'
+        run: bash packaging/build-mac.sh
+      - name: Public source audit
+        run: python3 scripts/audit_public.py
+      - name: Keep reviewed install packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: CavalryKit-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 14

@@ -146,8 +146,10 @@ fn extract_7z(path: &Path, dest: &Path) -> Result<(), String> {
 
 /// 垃圾过滤 + 路径净化 → 目标落点;垃圾条目返回 Ok(None),危险路径返回 Err。
 fn filtered_out_path(raw: &Path, dest: &Path) -> Result<Option<PathBuf>, String> {
-    // 任一路径组件是垃圾 → 整条跳过
-    if raw
+    let Some(safe_rel) = sanitize(raw) else {
+        return Err(format!("压缩包包含不安全路径: {}", raw.display()));
+    };
+    if safe_rel
         .components()
         .filter_map(|c| match c {
             Component::Normal(p) => p.to_str(),
@@ -157,9 +159,6 @@ fn filtered_out_path(raw: &Path, dest: &Path) -> Result<Option<PathBuf>, String>
     {
         return Ok(None);
     }
-    let Some(safe_rel) = sanitize(raw) else {
-        return Err(format!("压缩包包含不安全路径: {}", raw.display()));
-    };
     Ok(Some(dest.join(safe_rel)))
 }
 
@@ -170,12 +169,16 @@ pub fn is_junk_name(name: &str) -> bool {
 
 /// 净化 zip 条目路径：拒绝绝对路径与 `..` 穿越，仅保留正常组件。
 fn sanitize(rel: &Path) -> Option<PathBuf> {
+    let raw = rel.to_str()?;
+    if raw.starts_with(['/', '\\']) || raw.contains(':') || raw.contains('\0') {
+        return None;
+    }
     let mut out = PathBuf::new();
-    for c in rel.components() {
-        match c {
-            Component::Normal(p) => out.push(p),
-            _ => return None,
+    for segment in raw.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        if segment == ".." || segment == "." {
+            return None;
         }
+        out.push(segment);
     }
     if out.as_os_str().is_empty() {
         None

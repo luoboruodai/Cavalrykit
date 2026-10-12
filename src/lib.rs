@@ -1,9 +1,13 @@
 //! CavalryKit 库入口：引擎模块 + UI 模块 + 应用启动函数。
 
 pub mod detector;
+pub mod i18n;
+pub mod icon_assets;
 pub mod installer;
 pub mod library;
 pub mod paths;
+pub mod restart;
+pub mod settings;
 pub mod ui;
 pub mod unzipper;
 pub mod worker;
@@ -23,8 +27,8 @@ pub fn run() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title(concat!("CavalryKit ", env!("CARGO_PKG_VERSION")))
             .with_app_id("com.cavalrykit.app")
-            .with_inner_size([960.0, 680.0])
-            .with_min_inner_size([800.0, 560.0])
+            .with_inner_size([1120.0, 760.0])
+            .with_min_inner_size([900.0, 620.0])
             .with_decorations(true)
             .with_transparent(false)
             .with_icon(ui::icon::window_icon()),
@@ -49,8 +53,7 @@ pub fn run() -> eframe::Result<()> {
         Box::new(move |cc| {
             // Reset UI zoom; physical scaling remains managed by the native per-monitor DPI.
             cc.egui_ctx.set_zoom_factor(1.0);
-            ui::fonts::setup(&cc.egui_ctx);
-            ui::theme::apply(&cc.egui_ctx);
+
             Ok(Box::new(ui::app::CavalryKitApp::new(&cc.egui_ctx, initial)))
         }),
     )

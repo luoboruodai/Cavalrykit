@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.1.1 — 2026-10-12 (local validation candidate)
+## 0.1.1 — 2026-10-12
+
+### UI and settings / 界面与设置
+- Cavalry-inspired dark/light/custom palette with readable text across extreme custom colors.
+- Four UI languages (Chinese, English, Japanese, Korean) and an OFL font subset for consistent glyph coverage.
+- Right-aligned modal actions, fixed-height footers, 4/8/16/24pt spacing, same-row status and visible keyboard focus.
+- Preview/cancel/save preferences, scale, reduced motion, refresh-on-focus and restart policy.
+- Optional safe Cavalry restart/open after success; cancellation/timeout/multiple instances never force-close or duplicate-launch.
+- Preserve prior input failures when cancelling a conflict batch; fix search clear-button overflow and localized row-action sizing.
+- Native macOS/Windows CI and isolated Windows installer/shortcut/rollback tests; physical Windows acceptance remains deferred.
 
 ### Performance / 性能
 - Move file I/O, archive preparation and installation to a serialized background worker.
@@ -12,7 +21,9 @@
 ### UI / 界面
 - Present all import results in a bounded modal dialog; keep the import rail size unchanged.
 - Clip independent columns and bound long labels/details; support small windows.
-- Update the shared app icon and add accessible labels to custom buttons.
+- Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
+- Separate in-app branding from macOS Dock padding; update bundle build to 4 for the icon revision.
+- Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
 
 ### Reliability / 可靠性
@@ -27,7 +38,7 @@
 ### Verification / 验证
 - Synthetic tests cover headless layout, 10,000-entry list virtualization, worker temp-file lifetime, icon pixels and failed overwrites.
 - macOS native import/result/search interaction is checked locally.
-- Windows cross-build and static PE checks do **not** replace native Windows runtime acceptance; stable publishing is pending that check.
+- Windows cross-build and static PE checks do **not** replace native Windows runtime acceptance; physical native interaction testing is deferred and is not claimed as complete.
 
 ## 0.1.0
 

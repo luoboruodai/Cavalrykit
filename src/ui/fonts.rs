@@ -28,6 +28,12 @@ pub fn setup(ctx: &egui::Context) {
         ))),
     );
 
+    fonts.font_data.insert(
+        "ui-cjk".to_owned(),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../../assets/fonts/CavalryKit-UI-CJK.otf"
+        ))),
+    );
     let has_cjk = match load_cjk() {
         Some(bytes) => {
             fonts.font_data.insert(
@@ -47,12 +53,15 @@ pub fn setup(ctx: &egui::Context) {
         .entry(egui::FontFamily::Proportional)
         .or_default();
     proportional.insert(0, "roboto".to_owned());
+    proportional.push("ui-cjk".to_owned());
     let mut medium_families = vec![FAMILY_MEDIUM.to_owned(), "roboto".to_owned()];
     let mut bold_families = vec![
         FAMILY_SEMIBOLD.to_owned(),
         FAMILY_MEDIUM.to_owned(),
         "roboto".to_owned(),
     ];
+    medium_families.push("ui-cjk".into());
+    bold_families.push("ui-cjk".into());
     if has_cjk {
         proportional.push("cjk".to_owned());
         medium_families.push("cjk".to_owned());

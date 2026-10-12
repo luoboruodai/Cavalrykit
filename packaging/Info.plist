@@ -7,7 +7,7 @@
     <key>CFBundleExecutable</key>
     <string>CavalryKit</string>
     <key>CFBundleIconFile</key>
-    <string>icon</string>
+    <string>CavalryKitIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.cavalrykit.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -19,7 +19,7 @@
     <key>CFBundleShortVersionString</key>
     <string>0.1.1</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>4</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>

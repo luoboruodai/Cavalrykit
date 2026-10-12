@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT_FILES = {'.cargo/config.toml', '.gitignore', '.gitattributes', 'Cargo.toml', 'Cargo.lock', 'build.rs',
+ROOT_FILES = {'.github/workflows/desktop.yml', '.cargo/config.toml', '.gitignore', '.gitattributes', 'Cargo.toml', 'Cargo.lock', 'build.rs',
               'README.md', 'PRODUCT.md', 'CHANGELOG.md', 'RELEASE_NOTES.md'}
 DIRECTORIES = {'src', 'tests', 'assets', 'packaging', 'examples', 'scripts'}
 RULES = {

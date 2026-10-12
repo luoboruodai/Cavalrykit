@@ -150,6 +150,18 @@ pub fn execute(units: Vec<PlannedUnit>, resolved: Vec<(PlannedUnit, ConflictChoi
 fn install_transaction(unit: &PlannedUnit, overwrite: bool) -> Result<(), String> {
     let parent = unit.dest.parent().ok_or("目标没有父目录")?;
     fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {e}"))?;
+    if unit.kind == UnitKind::Plugin {
+        let source = unit
+            .source
+            .canonicalize()
+            .map_err(|e| format!("插件源目录不可用: {e}"))?;
+        let target_parent = parent
+            .canonicalize()
+            .map_err(|e| format!("目标目录不可用: {e}"))?;
+        if target_parent.starts_with(&source) {
+            return Err("目标位于插件源目录内部，已取消安装以避免递归复制".into());
+        }
+    }
     let staging = tempfile::Builder::new()
         .prefix(".cavalrykit-")
         .tempdir_in(parent)
@@ -206,11 +218,14 @@ fn copy_unit(unit: &PlannedUnit) -> Result<(), String> {
                 .map(|_| ())
                 .map_err(|e| format!("复制失败: {e}"))
         }
-        UnitKind::Plugin => copy_dir_all(&unit.source, &unit.dest),
+        UnitKind::Plugin => copy_dir_all(&unit.source, &unit.dest, 0),
     }
 }
 
-fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
+fn copy_dir_all(src: &Path, dst: &Path, depth: usize) -> Result<(), String> {
+    if depth > 64 {
+        return Err("插件目录嵌套超过 64 层，已取消安装".into());
+    }
     fs::create_dir_all(dst).map_err(|e| format!("创建插件目录失败: {e}"))?;
     for entry in fs::read_dir(src).map_err(|e| format!("读取插件目录失败: {e}"))? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -221,9 +236,11 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
             return Err("插件含符号链接，已取消安装并保留旧版本".into());
         }
         if meta.is_dir() {
-            copy_dir_all(&from, &to)?;
-        } else {
+            copy_dir_all(&from, &to, depth + 1)?;
+        } else if meta.is_file() {
             fs::copy(&from, &to).map_err(|e| format!("复制 {} 失败: {e}", from.display()))?;
+        } else {
+            return Err("插件中含非普通文件，已取消安装".into());
         }
     }
     Ok(())

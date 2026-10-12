@@ -1,15 +1,25 @@
-//! UI state: bounded layout + event-driven background I/O + true modal dialogs.
+//! Event-driven application state. Slow work stays in Worker; UI decisions are explicit.
 use super::theme as t;
-use crate::installer::{ConflictChoice, InstallPlan, Outcome, PlannedUnit};
-use crate::library::Library;
-use crate::paths::{self, CavalryPaths};
-use crate::worker::{Event, Job, Worker};
-use egui::{Margin, Vec2};
-use std::collections::{HashSet, VecDeque};
-use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::time::{Duration, Instant};
-
+use crate::{
+    i18n::Key as K,
+    installer::{ConflictChoice, InstallPlan, Outcome, PlannedUnit},
+    library::Library,
+    paths::CavalryPaths,
+    restart::{RestartError, RestartResult},
+    settings::{self, Settings},
+    worker::{Event, Job, Worker},
+};
+use egui::Vec2;
+use std::{
+    collections::{HashSet, VecDeque},
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, TryRecvError},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Filter {
     All,
@@ -21,46 +31,77 @@ pub(crate) enum Row {
     Script(usize),
     Plugin(usize),
 }
-
+#[derive(Default)]
+pub(crate) struct Audit {
+    pub rail: Option<egui::Rect>,
+    pub library: Option<egui::Rect>,
+    pub card: Option<egui::Rect>,
+    pub title: Option<egui::Rect>,
+    pub status: Option<egui::Rect>,
+    pub dialog: Option<egui::Rect>,
+    pub buttons: Vec<(K, egui::Rect)>,
+}
 pub struct CavalryKitApp {
     pub(crate) paths: Option<CavalryPaths>,
     pub(crate) filter: Filter,
     pub(crate) queue: Vec<PathBuf>,
-    pending_plan: Option<InstallPlan>,
+    pub(crate) pending_plan: Option<InstallPlan>,
     pub(crate) conflicts: VecDeque<PlannedUnit>,
     resolved: Vec<(PlannedUnit, ConflictChoice)>,
     pub(crate) outcome: Option<Outcome>,
     pub(crate) library: Library,
     pub(crate) confirm_uninstall: Option<PathBuf>,
     pub(crate) cavalry_running: bool,
-    about_open: bool,
+    pub(crate) about_open: bool,
     toast: Option<(String, Instant)>,
     pub(crate) search: String,
-    pub(crate) status_line: String,
-    pub(crate) busy: Option<&'static str>,
+    pub(crate) busy: Option<K>,
     worker: Option<Worker>,
     picker: Option<Receiver<Vec<PathBuf>>>,
+    picking_app: bool,
     pub(crate) rows: Vec<Row>,
     cached_query: Option<(String, Filter)>,
-    logo: egui::TextureHandle,
+    pub(crate) logo: egui::TextureHandle,
+    pub(crate) settings: Settings,
+    pub(crate) settings_draft: Option<Settings>,
+    settings_path: Option<PathBuf>,
+    pub(crate) settings_error: Option<String>,
+    applied_style: Option<Settings>,
+    pub(crate) notice: Option<(K, Option<String>)>,
+    pub(crate) restart_prompt: bool,
+    pub(crate) restart_cancel: Option<Arc<AtomicBool>>,
+    reload_scripts: usize,
+    reload_plugins: usize,
+    pub(crate) result_page: usize,
+    pub(crate) apply_all: bool,
+    was_focused: bool,
+    last_refresh: Instant,
+    pub(crate) audit: Audit,
 }
-
 impl CavalryKitApp {
-    pub fn new(ctx: &egui::Context, initial_files: Vec<PathBuf>) -> Self {
-        Self::with_paths(ctx, initial_files, CavalryPaths::detect())
+    pub fn new(ctx: &egui::Context, initial: Vec<PathBuf>) -> Self {
+        super::fonts::setup(ctx);
+        let mut app = Self::with_paths(ctx, initial, CavalryPaths::detect());
+        app.settings_path = settings::config_path();
+        if let Some(path) = &app.settings_path {
+            match Settings::load(path) {
+                Ok(s) => app.settings = s,
+                Err(e) => app.notice = Some((K::SettingsLoadError, Some(e))),
+            }
+        }
+        app.apply_style(ctx);
+        app
     }
-
-    /// Dependency injection for headless/layout tests; production always uses detect().
     pub fn with_paths(
         ctx: &egui::Context,
-        initial_files: Vec<PathBuf>,
+        initial: Vec<PathBuf>,
         paths: Option<CavalryPaths>,
     ) -> Self {
         let worker = paths.clone().map(|p| {
             let ctx = ctx.clone();
             Worker::spawn(p, move || ctx.request_repaint())
         });
-        let icon = super::icon::window_icon();
+        let icon = super::icon::brand_icon();
         let logo = ctx.load_texture(
             "cavalrykit-logo",
             egui::ColorImage::from_rgba_unmultiplied(
@@ -72,10 +113,10 @@ impl CavalryKitApp {
         let mut app = Self {
             paths,
             filter: Filter::All,
-            queue: Vec::new(),
+            queue: vec![],
             pending_plan: None,
             conflicts: VecDeque::new(),
-            resolved: Vec::new(),
+            resolved: vec![],
             outcome: None,
             library: Library::default(),
             confirm_uninstall: None,
@@ -83,70 +124,99 @@ impl CavalryKitApp {
             about_open: false,
             toast: None,
             search: String::new(),
-            status_line: String::new(),
             busy: None,
             worker,
             picker: None,
-            rows: Vec::new(),
+            picking_app: false,
+            rows: vec![],
             cached_query: None,
             logo,
+            settings: Settings::default(),
+            settings_draft: None,
+            settings_path: None,
+            settings_error: None,
+            applied_style: None,
+            notice: None,
+            restart_prompt: false,
+            restart_cancel: None,
+            reload_scripts: 0,
+            reload_plugins: 0,
+            result_page: 0,
+            apply_all: false,
+            was_focused: false,
+            last_refresh: Instant::now(),
+            audit: Audit::default(),
         };
         if app.paths.is_some() {
-            app.submit(Job::Scan, "正在读取装备库…");
-        } else {
-            app.status_line = "无法定位用户配置目录".into();
+            app.submit(Job::Scan, K::ScanBusy);
         }
-        app.enqueue(initial_files);
+        app.enqueue(initial);
+        app.apply_style(ctx);
         app
     }
-
+    pub(crate) fn prefs(&self) -> &Settings {
+        self.settings_draft.as_ref().unwrap_or(&self.settings)
+    }
+    pub(crate) fn tr(&self, key: K) -> &'static str {
+        self.prefs().language.tr(key)
+    }
+    pub(crate) fn p(&self) -> t::Palette {
+        t::palette(self.prefs())
+    }
+    fn apply_style(&mut self, ctx: &egui::Context) {
+        let settings = self.prefs().clone();
+        if self.applied_style.as_ref() != Some(&settings) {
+            t::apply_settings(ctx, &settings);
+            self.applied_style = Some(settings);
+            ctx.request_repaint();
+        }
+    }
+    pub(crate) fn record(&mut self, key: K, response: &egui::Response) {
+        self.audit.buttons.push((key, response.rect));
+    }
     pub(crate) fn enqueue(&mut self, files: Vec<PathBuf>) {
-        // No metadata calls on the UI thread: network paths can block even exists().
         let mut seen: HashSet<PathBuf> = self.queue.iter().cloned().collect();
         for file in files {
             if self.queue.len() >= 256 {
-                self.push_toast("单次队列最多 256 个输入，请分批导入。");
+                self.push_toast(self.tr(K::QueueLimit));
                 break;
             }
             if seen.insert(file.clone()) {
                 self.queue.push(file);
             }
         }
+        // A pending reload offer must wait for newly dropped input rather than interrupting it.
+        if !self.queue.is_empty() {
+            self.restart_prompt = false;
+        }
     }
-
-    fn submit(&mut self, job: Job, status: &'static str) {
+    pub(crate) fn submit(&mut self, job: Job, status: K) {
         let result = self
             .worker
             .as_ref()
-            .ok_or_else(|| "后台任务不可用".into())
+            .ok_or_else(|| self.tr(K::WorkerError).to_owned())
             .and_then(|w| w.submit(job));
         match result {
             Ok(()) => self.busy = Some(status),
-            Err(error) => {
+            Err(e) => {
                 self.busy = None;
-                self.report_error(error);
+                self.notice = Some((K::OperationError, Some(e)));
             }
         }
     }
-
-    fn report_error(&mut self, error: String) {
-        self.outcome = Some(Outcome {
-            failures: vec![("操作未完成".into(), error)],
-            ..Default::default()
-        });
+    pub(crate) fn push_toast(&mut self, text: impl Into<String>) {
+        self.toast = Some((text.into(), Instant::now()));
     }
-
     pub(crate) fn refresh_library(&mut self) {
         if self.busy.is_none() && self.pending_plan.is_none() {
-            self.submit(Job::Scan, "正在刷新装备库…");
+            self.submit(Job::Scan, K::ScanBusy);
+            self.last_refresh = Instant::now();
         }
     }
-
     fn replace_library(&mut self, library: Library) {
         self.library = library;
         self.cached_query = None;
     }
-
     pub(crate) fn update_rows(&mut self) {
         let key = (self.search.trim().to_lowercase(), self.filter);
         if self.cached_query.as_ref() == Some(&key) {
@@ -175,23 +245,20 @@ impl CavalryKitApp {
         }
         self.cached_query = Some(key);
     }
-
-    pub(crate) fn push_toast(&mut self, text: impl Into<String>) {
-        self.toast = Some((text.into(), Instant::now()));
-    }
-
     pub(crate) fn pick_files(&mut self, ctx: &egui::Context) {
         if self.picker.is_some() {
             return;
         }
+        self.picking_app = false;
         let future = rfd::AsyncFileDialog::new()
+            .set_title(self.tr(K::ChooseFiles))
             .add_filter(
-                "Cavalry 文件",
+                self.tr(K::Formats),
                 &[
                     "jsc", "js", "jsx", "zip", "7z", "tar", "tgz", "tbz2", "gz", "bz2",
                 ],
             )
-            .add_filter("所有文件", &["*"])
+            .add_filter(self.tr(K::AllFiles), &["*"])
             .pick_files();
         let (tx, rx) = mpsc::channel();
         let ctx = ctx.clone();
@@ -206,17 +273,83 @@ impl CavalryKitApp {
         });
         self.picker = Some(rx);
     }
-
+    pub(crate) fn pick_application(&mut self, ctx: &egui::Context) {
+        if self.picker.is_some() {
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        let extensions = &["app"];
+        #[cfg(not(target_os = "macos"))]
+        let extensions = &["exe"];
+        let future = rfd::AsyncFileDialog::new()
+            .set_title(self.tr(K::SelectApp))
+            .add_filter("Cavalry", extensions)
+            .pick_file();
+        let (tx, rx) = mpsc::channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let files = pollster::block_on(future)
+                .map(|f| vec![f.path().to_owned()])
+                .unwrap_or_default();
+            let _ = tx.send(files);
+            ctx.request_repaint();
+        });
+        self.picking_app = true;
+        self.picker = Some(rx);
+    }
+    pub(crate) fn open_settings(&mut self) {
+        if let Some(status) = self.busy {
+            self.push_toast(self.tr(status));
+            return;
+        }
+        if self.settings_draft.is_none() {
+            self.settings_draft = Some(self.settings.clone());
+            self.settings_error = None;
+        }
+    }
+    pub(crate) fn cancel_settings(&mut self, ctx: &egui::Context) {
+        if self.busy != Some(K::SaveBusy) {
+            self.settings_draft = None;
+            self.settings_error = None;
+            self.apply_style(ctx);
+        }
+    }
+    pub(crate) fn save_settings(&mut self) {
+        if self.busy.is_some() {
+            return;
+        }
+        if let Some(draft) = self.settings_draft.clone() {
+            if let Some(path) = self.settings_path.clone() {
+                self.submit(Job::SaveSettings(path, draft), K::SaveBusy);
+            } else if self.paths.is_none() {
+                self.settings = draft;
+                self.settings_draft = None;
+                self.push_toast(self.tr(K::SettingsSaved));
+            } else {
+                self.settings_error = Some(self.tr(K::DirectoriesUnavailable).into());
+            }
+        }
+    }
     fn poll_events(&mut self) {
         if let Some(picker) = &self.picker {
             match picker.try_recv() {
                 Ok(files) => {
                     self.picker = None;
-                    self.enqueue(files);
+                    if self.picking_app {
+                        if let (Some(draft), Some(path)) =
+                            (self.settings_draft.as_mut(), files.first())
+                        {
+                            draft.cavalry_path = path.to_string_lossy().into_owned();
+                        }
+                        self.picking_app = false;
+                    } else {
+                        self.enqueue(files);
+                    }
                 }
                 Err(TryRecvError::Disconnected) => {
                     self.picker = None;
-                    self.report_error("文件选择窗口异常关闭".into());
+                    self.picking_app = false;
+                    self.notice = Some((K::OperationError, None));
                 }
                 Err(TryRecvError::Empty) => {}
             }
@@ -231,8 +364,9 @@ impl CavalryKitApp {
                 Ok(Event::Planned(mut plan)) => {
                     self.busy = None;
                     self.conflicts = std::mem::take(&mut plan.conflicts).into();
+                    self.apply_all = false;
                     if self.conflicts.is_empty() {
-                        self.submit(Job::Install(plan, vec![]), "正在安装…");
+                        self.submit(Job::Install(plan, vec![]), K::InstallBusy);
                     } else {
                         self.pending_plan = Some(plan);
                     }
@@ -240,59 +374,175 @@ impl CavalryKitApp {
                 Ok(Event::Installed(outcome, lib)) => {
                     self.busy = None;
                     self.replace_library(lib);
+                    self.reload_scripts += outcome.installed_scripts.len();
+                    self.reload_plugins += outcome.installed_plugins.len();
                     self.outcome = Some(outcome);
+                    self.result_page = 0;
                 }
                 Ok(Event::Uninstalled(result, lib)) => {
                     self.busy = None;
                     self.replace_library(lib);
                     match result {
-                        Ok(()) => self.push_toast("已移入废纸篓 / 回收站，可在系统中恢复"),
-                        Err(error) => self.report_error(error),
+                        Ok(()) => self.push_toast(self.tr(K::Removed)),
+                        Err(e) => self.notice = Some((K::OperationError, Some(e))),
                     }
                 }
-                Ok(Event::Failed(error)) => {
+                Ok(Event::SettingsSaved(result)) => {
                     self.busy = None;
-                    self.report_error(error);
+                    match result {
+                        Ok(()) => {
+                            if let Some(s) = self.settings_draft.take() {
+                                self.settings = s;
+                            }
+                            self.settings_error = None;
+                            self.push_toast(self.tr(K::SettingsSaved));
+                        }
+                        Err(e) => self.settings_error = Some(e),
+                    }
+                }
+                Ok(Event::Restarted(result)) => {
+                    self.busy = None;
+                    self.restart_cancel = None;
+                    match result {
+                        Ok(RestartResult::LaunchRequested) => {
+                            self.push_toast(self.tr(K::RestartDone))
+                        }
+                        Ok(RestartResult::AlreadyRunning) => {
+                            self.push_toast(self.tr(K::AlreadyRunning))
+                        }
+                        Err(e) => {
+                            let key = match e {
+                                RestartError::NotFound | RestartError::InvalidPath => {
+                                    K::RestartNotFound
+                                }
+                                RestartError::Multiple => K::RestartMultiple,
+                                RestartError::Timeout | RestartError::QuitDeclined => {
+                                    K::RestartTimeout
+                                }
+                                RestartError::Cancelled => K::RestartCancelled,
+                                RestartError::System(_) => K::RestartError,
+                            };
+                            let detail = if let RestartError::System(text) = e {
+                                Some(text)
+                            } else {
+                                None
+                            };
+                            self.notice = Some((key, detail));
+                        }
+                    }
+                }
+                Ok(Event::Discarded) => self.busy = None,
+                Ok(Event::Failed(e)) => {
+                    self.busy = None;
+                    self.restart_cancel = None;
+                    self.notice = Some((K::OperationError, Some(e)));
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     self.worker = None;
                     self.busy = None;
-                    self.report_error("后台线程已停止，请关闭后重新打开 CavalryKit。".into());
+                    self.restart_cancel = None;
+                    self.notice = Some((K::WorkerError, None));
                     break;
                 }
             }
         }
     }
-
-    fn pump_queue(&mut self) {
-        if self.busy.is_none()
-            && self.pending_plan.is_none()
-            && self.outcome.is_none()
-            && self.confirm_uninstall.is_none()
-            && !self.about_open
-            && !self.queue.is_empty()
-            && self.paths.is_some()
-        {
-            let files = std::mem::take(&mut self.queue);
-            self.submit(Job::Plan(files), "正在识别与解压…");
-        }
-    }
-
-    fn resolve_current(&mut self, choice: ConflictChoice) {
+    pub(crate) fn resolve_current(&mut self, choice: ConflictChoice) {
         if let Some(unit) = self.conflicts.pop_front() {
             self.resolved.push((unit, choice));
+        }
+        if self.apply_all {
+            self.resolved
+                .extend(self.conflicts.drain(..).map(|u| (u, choice)));
         }
         if self.conflicts.is_empty() {
             if let Some(plan) = self.pending_plan.take() {
                 let resolved = std::mem::take(&mut self.resolved);
-                self.submit(Job::Install(plan, resolved), "正在安装…");
+                self.submit(Job::Install(plan, resolved), K::InstallBusy);
             }
         }
     }
-
+    pub(crate) fn cancel_batch(&mut self) {
+        if let Some(mut plan) = self.pending_plan.take() {
+            let names = plan
+                .units
+                .iter()
+                .chain(self.conflicts.iter())
+                .chain(self.resolved.iter().map(|(u, _)| u))
+                .map(|u| u.display.clone())
+                .collect();
+            self.conflicts.clear();
+            self.resolved.clear();
+            self.outcome = Some(Outcome {
+                skipped: names,
+                failures: std::mem::take(&mut plan.failures),
+                ..Default::default()
+            });
+            self.submit(Job::Discard(plan), K::PlanBusy);
+        }
+    }
+    pub(crate) fn dismiss_outcome(&mut self) {
+        self.outcome = None;
+        self.result_page = 0;
+        if self.queue.is_empty() {
+            self.offer_restart();
+        }
+    }
+    fn offer_restart(&mut self) {
+        self.restart_prompt = self
+            .settings
+            .restart_prompt
+            .wants(self.reload_scripts, self.reload_plugins);
+        if !self.restart_prompt {
+            self.reload_scripts = 0;
+            self.reload_plugins = 0;
+        }
+    }
+    pub(crate) fn decline_restart(&mut self) {
+        self.restart_prompt = false;
+        self.reload_scripts = 0;
+        self.reload_plugins = 0;
+    }
+    pub(crate) fn begin_restart(&mut self, allow_quit: bool) {
+        if self.busy.is_some() || !self.queue.is_empty() {
+            return;
+        }
+        self.decline_restart();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.restart_cancel = Some(cancel.clone());
+        self.submit(
+            Job::Restart(self.settings.cavalry_path.clone(), allow_quit, cancel),
+            K::RestartBusy,
+        );
+        if self.busy.is_none() {
+            self.restart_cancel = None;
+        }
+    }
+    fn modal_active(&self) -> bool {
+        !self.conflicts.is_empty()
+            || self.outcome.is_some()
+            || self.confirm_uninstall.is_some()
+            || self.about_open
+            || self.settings_draft.is_some()
+            || self.restart_prompt
+            || self.restart_cancel.is_some()
+            || self.notice.is_some()
+    }
+    fn pump_queue(&mut self) {
+        if self.busy.is_none()
+            && !self.modal_active()
+            && !self.queue.is_empty()
+            && self.paths.is_some()
+        {
+            let files = std::mem::take(&mut self.queue);
+            self.submit(Job::Plan(files), K::PlanBusy);
+        }
+    }
     pub fn draw(&mut self, ctx: &egui::Context) {
+        self.audit = Audit::default();
         self.poll_events();
+        self.apply_style(ctx);
         let dropped = ctx.input(|i| {
             i.raw
                 .dropped_files
@@ -301,371 +551,214 @@ impl CavalryKitApp {
                 .collect()
         });
         self.enqueue(dropped);
+        let focused = ctx.input(|i| i.focused);
+        if focused
+            && !self.was_focused
+            && self.settings.refresh_on_focus
+            && self.last_refresh.elapsed() > Duration::from_secs(2)
+            && !self.modal_active()
+            && self.paths.is_some()
+        {
+            self.refresh_library();
+        }
+        self.was_focused = focused;
+        if !self.modal_active() {
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::O)) {
+                self.pick_files(ctx);
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::R)) {
+                self.refresh_library();
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Comma)) {
+                self.open_settings();
+            }
+        }
         self.pump_queue();
         if ctx.input(|i| i.viewport().close_requested())
             && (self.busy.is_some() || self.picker.is_some())
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.push_toast("操作尚未完成，请稍后关闭窗口。");
+            self.push_toast(self.tr(K::BusyClose));
         }
+        let p = self.p();
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(t::SURFACE).inner_margin(Margin {
-                left: 16,
-                right: 16,
-                top: 14,
-                bottom: 16,
-            }))
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(t::MD))
             .show(ctx, |ui| {
                 let full = ui.max_rect();
-                let rail_w = 230.0;
+                let rail_w = if full.width() >= 980.0 { 296.0 } else { 264.0 };
                 let rail_rect =
                     egui::Rect::from_min_size(full.min, Vec2::new(rail_w, full.height()));
+                self.audit.rail = Some(rail_rect);
                 let mut rail =
                     ui.new_child(egui::UiBuilder::new().id_salt("rail").max_rect(rail_rect));
                 rail.set_clip_rect(rail_rect.intersect(ui.clip_rect()));
-                egui::Frame::new()
-                    .fill(t::SURFACE_CONTAINER)
-                    .corner_radius(t::RADIUS_MD)
-                    .inner_margin(14.0)
-                    .show(&mut rail, |ui| {
-                        ui.set_width(rail_w - 28.0);
-                        egui::ScrollArea::vertical()
-                            .id_salt("rail-scroll")
-                            .max_height(full.height() - 28.0)
-                            .show(ui, |ui| self.show_rail(ui));
-                    });
+                t::card(p).show(&mut rail, |ui| {
+                    ui.set_width(rail_w - 2.0 * t::MD);
+                    egui::ScrollArea::vertical()
+                        .id_salt("rail-scroll")
+                        .max_height(full.height() - 2.0 * t::MD)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| self.show_rail(ui));
+                });
                 let lib_rect = egui::Rect::from_min_max(
-                    egui::pos2(full.min.x + rail_w + 16.0, full.min.y),
+                    egui::pos2(full.min.x + rail_w + t::LG, full.min.y),
                     full.max,
                 );
-                let mut lib =
+                self.audit.library = Some(lib_rect);
+                let mut library =
                     ui.new_child(egui::UiBuilder::new().id_salt("library").max_rect(lib_rect));
-                lib.set_clip_rect(lib_rect.intersect(ui.clip_rect()));
-                self.show_library(&mut lib);
+                library.set_clip_rect(lib_rect.intersect(ui.clip_rect()));
+                self.show_library(&mut library);
             });
         if let Some((text, at)) = &self.toast {
-            let lifetime = Duration::from_millis(2600);
-            if at.elapsed() >= lifetime {
+            let duration = Duration::from_secs(3);
+            if at.elapsed() >= duration {
                 self.toast = None;
             } else {
-                ctx.request_repaint_after(lifetime.saturating_sub(at.elapsed()));
+                ctx.request_repaint_after(duration.saturating_sub(at.elapsed()));
                 egui::Area::new(egui::Id::new("toast"))
                     .order(egui::Order::Foreground)
-                    .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -18.0])
+                    .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -16.0])
                     .show(ctx, |ui| {
                         egui::Frame::new()
-                            .fill(t::INVERSE_SURFACE)
+                            .fill(p.raised)
+                            .stroke(egui::Stroke::new(1.0_f32, p.border))
                             .corner_radius(8)
-                            .inner_margin(16.0)
+                            .inner_margin(t::MD)
                             .show(ui, |ui| {
-                                ui.set_max_width(500.0);
-                                ui.label(t::body(text, t::BODY_MD).color(t::INVERSE_ON_SURFACE));
+                                ui.set_max_width((ctx.screen_rect().width() - 64.0).min(640.0));
+                                ui.label(t::text(text, 14.0, p.text));
                             });
                     });
             }
         }
-        // Only one modal at a time; all underlying controls are blocked by egui::Modal.
-        if !self.conflicts.is_empty() {
+        if self.restart_cancel.is_some() {
+            self.show_restart_progress(ctx);
+        } else if !self.conflicts.is_empty() {
             self.show_conflict_dialog(ctx);
         } else if self.outcome.is_some() {
             self.show_result_dialog(ctx);
+        } else if self.restart_prompt {
+            self.show_restart_dialog(ctx);
         } else if self.confirm_uninstall.is_some() {
             self.show_uninstall_dialog(ctx);
+        } else if self.settings_draft.is_some() {
+            self.show_settings(ctx);
         } else if self.about_open {
             self.show_about_dialog(ctx);
-        }
-    }
-
-    fn show_rail(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.image((self.logo.id(), Vec2::splat(34.0)));
-            ui.label(t::medium("CavalryKit", 18.0).color(t::ON_SURFACE));
-        });
-        ui.add_space(4.0);
-        t::status_chip_compact(
-            ui,
-            self.cavalry_running,
-            if self.cavalry_running {
-                "Cavalry 运行中"
-            } else {
-                "Cavalry 未运行"
-            },
-        );
-        ui.add_space(12.0);
-        self.show_install_stage(ui);
-        ui.add_space(12.0);
-        rail_link(ui, "脚本目录", Icon::Folder, || {
-            if let Some(p) = &self.paths {
-                paths::open_dir(&p.scripts);
-            }
-        });
-        rail_link(ui, "插件目录", Icon::Puzzle, || {
-            if let Some(p) = &self.paths {
-                paths::open_dir(&p.plugins);
-            }
-        });
-        rail_link(ui, "关于", Icon::Info, || self.about_open = true);
-    }
-
-    fn show_conflict_dialog(&mut self, ctx: &egui::Context) {
-        let unit = self.conflicts.front().unwrap();
-        let mut choice = None;
-        modal(ctx, "conflict", |ui| {
-            ui.label(t::medium("安装冲突", t::TITLE_LG));
-            ui.label(format!("已存在同名{}：", unit.kind.label()));
-            ui.add(egui::Label::new(unit.dest.to_string_lossy()).wrap());
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                for (label, value, style) in [
-                    ("覆盖", ConflictChoice::Overwrite, t::Btn::Filled),
-                    (
-                        "保留两者",
-                        ConflictChoice::KeepBoth,
-                        t::Btn::Text(t::PRIMARY),
-                    ),
-                    ("跳过", ConflictChoice::Skip, t::Btn::Text(t::PRIMARY)),
-                ] {
-                    if t::button(ui, label, style, 40.0).clicked() {
-                        choice = Some(value);
-                    }
-                }
-            });
-            ui.label(t::body(
-                format!("还有 {} 个冲突待处理", self.conflicts.len()),
-                t::BODY_SM,
-            ));
-        });
-        if let Some(choice) = choice {
-            self.resolve_current(choice);
-        }
-    }
-
-    fn show_result_dialog(&mut self, ctx: &egui::Context) {
-        let outcome = self.outcome.as_ref().unwrap();
-        let mut close = false;
-        let response = modal(ctx, "result", |ui| {
-            ui.label(t::medium(
-                if outcome.failures.is_empty() {
-                    "安装完成"
-                } else {
-                    "安装结果 · 请检查"
-                },
-                t::TITLE_LG,
-            ));
-            ui.label(format!(
-                "成功 {} · 跳过 {} · 失败 {}",
-                outcome.installed_scripts.len() + outcome.installed_plugins.len(),
-                outcome.skipped.len(),
-                outcome.failures.len()
-            ));
-            ui.add_space(6.0);
-            egui::ScrollArea::vertical()
-                .id_salt("result-rows")
-                .max_height((ctx.screen_rect().height() - 260.0).clamp(100.0, 340.0))
-                .show(ui, |ui| {
-                    for name in outcome
-                        .installed_scripts
-                        .iter()
-                        .chain(&outcome.installed_plugins)
-                    {
-                        ui.add(
-                            egui::Label::new(
-                                t::body(format!("已安装：{name}"), t::BODY_MD)
-                                    .color(t::ON_SUCCESS_CONTAINER),
-                            )
-                            .wrap(),
-                        );
-                    }
-                    for name in &outcome.skipped {
-                        ui.add(egui::Label::new(format!("已跳过：{name}")).wrap());
-                    }
-                    for (name, reason) in &outcome.failures {
-                        ui.add(
-                            egui::Label::new(
-                                t::body(format!("{name}\n{reason}"), t::BODY_MD).color(t::ERROR),
-                            )
-                            .wrap(),
-                        );
-                    }
-                });
-            if outcome.restart_hint {
-                ui.label(
-                    t::body("插件已安装，重启 Cavalry 后生效。", t::BODY_MD).color(t::PRIMARY),
-                );
-            }
-            if !self.queue.is_empty() {
-                ui.label(format!(
-                    "确认后继续处理 {} 个待安装输入。",
-                    self.queue.len()
-                ));
-            }
-            ui.add_space(10.0);
-            if t::button(ui, "知道了", t::Btn::Filled, 40.0).clicked() {
-                close = true;
-            }
-        });
-        if close || response.should_close() {
-            self.outcome = None;
-            ctx.request_repaint();
-        }
-    }
-
-    fn show_uninstall_dialog(&mut self, ctx: &egui::Context) {
-        let target = self.confirm_uninstall.as_ref().unwrap();
-        let mut decided = None;
-        let response = modal(ctx, "uninstall", |ui| {
-            ui.label(t::medium("确认卸载", t::TITLE_LG));
-            ui.label("将以下条目移入废纸篓 / 回收站（可恢复）：");
-            ui.add(
-                egui::Label::new(target.file_name().unwrap_or_default().to_string_lossy()).wrap(),
-            );
-            ui.horizontal(|ui| {
-                if t::button(ui, "移入废纸篓", t::Btn::Filled, 40.0).clicked() {
-                    decided = Some(true);
-                }
-                if t::button(ui, "取消", t::Btn::Text(t::PRIMARY), 40.0).clicked() {
-                    decided = Some(false);
-                }
-            });
-        });
-        if decided == Some(true) {
-            let target = self.confirm_uninstall.take().unwrap();
-            self.submit(Job::Uninstall(target), "正在卸载…");
-        } else if decided == Some(false) || response.should_close() {
-            self.confirm_uninstall = None;
-        }
-    }
-
-    fn show_about_dialog(&mut self, ctx: &egui::Context) {
-        let mut close = false;
-        let response = modal(ctx, "about", |ui| {
-            ui.horizontal(|ui| {
-                ui.image((self.logo.id(), Vec2::splat(40.0)));
-                ui.label(t::medium("CavalryKit", t::TITLE_LG));
-            });
-            ui.label("Cavalry 脚本与插件的快捷安装器。拖入即装，冲突逐个询问，卸载可恢复。");
-            ui.label(format!(
-                "v{} · 仅供学习用途 · 与 Scene Group 无关",
-                env!("CARGO_PKG_VERSION")
-            ));
-            if t::button(ui, "知道了", t::Btn::Filled, 40.0).clicked() {
-                close = true;
-            }
-        });
-        if close || response.should_close() {
-            self.about_open = false;
+        } else if self.notice.is_some() {
+            self.show_notice(ctx);
         }
     }
 }
-
 impl eframe::App for CavalryKitApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.draw(ctx);
     }
 }
-
-fn modal<R>(
-    ctx: &egui::Context,
-    id: &str,
-    contents: impl FnOnce(&mut egui::Ui) -> R,
-) -> egui::ModalResponse<R> {
-    egui::Modal::new(egui::Id::new(id))
-        .frame(t::dialog_frame())
-        .show(ctx, |ui| {
-            ui.set_width((ctx.screen_rect().width() - 100.0).clamp(260.0, 480.0));
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-            contents(ui)
-        })
-}
-// ==================== 轨内链接 ====================
-
-enum Icon {
-    Folder,
-    Puzzle,
-    Info,
+impl Drop for CavalryKitApp {
+    fn drop(&mut self) {
+        if let Some(cancel) = &self.restart_cancel {
+            cancel.store(true, Ordering::SeqCst);
+        }
+    }
 }
 
-/// 轨底链接行:小图标 + label-medium 文字,悬停 8% 中性罩
-fn rail_link(ui: &mut egui::Ui, text: &str, icon: Icon, on_click: impl FnOnce()) {
-    let h = 26.0_f32;
-    let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), egui::Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), text));
-    let k = t::interact_t(ui, resp.id, resp.hovered());
-    let painter = ui.painter_at(rect);
-    if k > 0.0 {
-        painter.rect_filled(
-            rect,
-            egui::CornerRadius::same(t::RADIUS_SM),
-            t::with_alpha(t::STATE_HOVER_NEUTRAL, k),
-        );
-    }
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    let c = egui::Pos2::new(rect.min.x + 12.0, rect.center().y);
-    let col = t::ON_SURFACE_VARIANT;
-    match icon {
-        Icon::Folder => {
-            // 文件夹图标(体 + 左上 tab)
-            let body = egui::Rect::from_min_size(
-                egui::Pos2::new(c.x - 7.0, c.y - 4.0),
-                Vec2::new(14.0, 9.0),
-            );
-            painter.rect(
-                body,
-                egui::CornerRadius::same(2),
-                egui::Color32::TRANSPARENT,
-                egui::Stroke::new(1.5_f32, col),
-                egui::StrokeKind::Inside,
-            );
-            painter.line_segment(
-                [
-                    egui::Pos2::new(c.x - 7.0, c.y - 4.0),
-                    egui::Pos2::new(c.x - 2.0, c.y - 4.0),
-                ],
-                egui::Stroke::new(2.0_f32, col),
-            );
-            painter.line_segment(
-                [
-                    egui::Pos2::new(c.x - 2.0, c.y - 4.0),
-                    egui::Pos2::new(c.x - 0.5, c.y - 2.5),
-                ],
-                egui::Stroke::new(1.5_f32, col),
-            );
+/// Synthetic UI rendering only. Compiled out of production builds; never touches user libraries.
+#[cfg(feature = "ui-preview")]
+impl CavalryKitApp {
+    pub fn preview(ctx: &egui::Context, language: crate::settings::Language, screen: &str) -> Self {
+        super::fonts::setup(ctx);
+        let mut app = Self::with_paths(ctx, vec![], None);
+        app.settings.language = language;
+        app.settings.refresh_on_focus = false;
+        app.paths = Some(CavalryPaths::from_base(std::path::Path::new(
+            "preview-library",
+        )));
+        app.cavalry_running = true;
+        for (index, name) in [
+            "Create Render Item.js",
+            "Camera Control.jsc",
+            "Export Composition.jsx",
+            "Text Time Roll.js",
+            "Shape Utilities.js",
+            "タイミング調整.js",
+            "레이어 정리.js",
+            "路径工具.js",
+            "Color Palette.js",
+            "Animation Helpers.js",
+            "Arrange Layers.js",
+            "Preview Tools.js",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            app.library.scripts.push(crate::library::ScriptEntry {
+                name: name.into(),
+                group: if index < 4 {
+                    None
+                } else {
+                    Some("Utilities".into())
+                },
+                path: format!("preview-library/Scripts/{name}").into(),
+                search_key: name.to_lowercase(),
+            });
         }
-        Icon::Puzzle => {
-            painter.circle_stroke(c, 6.0, egui::Stroke::new(1.5_f32, col));
-            painter.circle_filled(c + Vec2::new(3.0, -3.0), 2.0, col);
+        app.library.plugins.push(crate::library::PluginEntry {
+            name: "Shape Toolkit".into(),
+            author: Some("Demo author".into()),
+            path: "preview-library/Plugins/Shape Toolkit".into(),
+            search_key: "shape toolkit demo author".into(),
+        });
+        match screen {
+            "settings" => app.open_settings(),
+            "custom" => {
+                app.open_settings();
+                let s = app.settings_draft.as_mut().unwrap();
+                s.theme = crate::settings::Theme::Custom;
+                s.accent = [95, 172, 255];
+            }
+            "light" => app.settings.theme = crate::settings::Theme::Light,
+            "result" => {
+                app.outcome = Some(Outcome {
+                    installed_scripts: vec!["Text Time Roll.js".into()],
+                    installed_plugins: vec!["Shape Toolkit".into()],
+                    restart_hint: true,
+                    ..Default::default()
+                })
+            }
+            "error" => {
+                app.outcome = Some(Outcome {
+                    failures: vec![(
+                        "Example.zip".into(),
+                        "Synthetic diagnostic: invalid archive header".into(),
+                    )],
+                    ..Default::default()
+                })
+            }
+            "restart" => app.restart_prompt = true,
+            "conflict" => app.conflicts.push_back(PlannedUnit {
+                kind: crate::installer::UnitKind::Script,
+                display: "Text Time Roll.js".into(),
+                source: "incoming/Text Time Roll.js".into(),
+                dest: "preview-library/Scripts/Text Time Roll.js".into(),
+            }),
+            _ => {}
         }
-        Icon::Info => {
-            painter.circle_stroke(c, 6.0, egui::Stroke::new(1.5_f32, col));
-            let g = ui
-                .painter()
-                .layout_no_wrap("i".to_owned(), t::font_bold(9.0), col);
-            ui.painter().galley(c - g.size() / 2.0, g, col);
-        }
-    }
-    let g = ui
-        .painter()
-        .layout_no_wrap(text.to_owned(), t::font_medium(t::LABEL_MD), col);
-    ui.painter().galley(
-        egui::Pos2::new(rect.min.x + 26.0, rect.center().y - g.size().y / 2.0),
-        g,
-        col,
-    );
-    if resp.clicked() {
-        on_click();
+        app
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        installer::{TempGuard, UnitKind},
+        settings::{Language, RestartPrompt, Theme},
+    };
     fn fixture() -> (egui::Context, CavalryKitApp) {
         let ctx = egui::Context::default();
         super::super::fonts::setup(&ctx);
-        t::apply(&ctx);
         let app = CavalryKitApp::with_paths(&ctx, vec![], None);
         (ctx, app)
     }
@@ -684,11 +777,90 @@ mod tests {
             |ctx| app.draw(ctx),
         )
     }
+    fn settle(ctx: &egui::Context, app: &mut CavalryKitApp, size: [f32; 2], tick: &mut f64) {
+        for _ in 0..4 {
+            *tick += 1.0;
+            let _ = render(ctx, app, size, *tick);
+        }
+    }
     #[test]
-    fn large_library_renders_only_visible_rows_and_caches_filter() {
+    fn four_language_layouts_keep_header_and_dialog_actions_aligned() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        for language in Language::ALL {
+            for theme in [Theme::Cavalry, Theme::Light] {
+                for size in [[720.0, 496.0], [900.0, 620.0], [1120.0, 760.0]] {
+                    app.settings.language = language;
+                    app.settings.theme = theme;
+                    app.cavalry_running = true;
+                    for dialog in 0..6 {
+                        app.outcome = None;
+                        app.confirm_uninstall = None;
+                        app.about_open = false;
+                        app.settings_draft = None;
+                        app.restart_prompt = false;
+                        app.conflicts.clear();
+                        match dialog {
+                            0 => {
+                                app.outcome = Some(Outcome {
+                                    installed_scripts: vec!["Very long 名称".repeat(20)],
+                                    ..Default::default()
+                                })
+                            }
+                            1 => app.conflicts.push_back(PlannedUnit {
+                                kind: UnitKind::Script,
+                                display: "Long 名称".repeat(40),
+                                source: "synthetic.js".into(),
+                                dest: PathBuf::from("long/path/".repeat(500)),
+                            }),
+                            2 => app.confirm_uninstall = Some("synthetic.js".into()),
+                            3 => app.about_open = true,
+                            4 => app.open_settings(),
+                            5 => app.restart_prompt = true,
+                            _ => {}
+                        }
+                        settle(&ctx, &mut app, size, &mut tick);
+                        let title = app.audit.title.unwrap();
+                        let status = app.audit.status.unwrap();
+                        assert!(
+                            title.right() + 4.0 <= status.left(),
+                            "header overlap {language:?} {size:?}: {title:?} {status:?}"
+                        );
+                        assert!(
+                            (title.center().y - status.center().y).abs() <= 4.0,
+                            "status not on title row {language:?} {size:?}: {title:?} {status:?}"
+                        );
+                        assert!(
+                            app.audit.rail.unwrap().right() + t::LG - 0.5
+                                <= app.audit.library.unwrap().left()
+                        );
+                        let panel = app.audit.dialog.unwrap();
+                        assert!(
+                            panel.left() >= -1.0
+                                && panel.top() >= -1.0
+                                && panel.right() <= size[0] + 1.0
+                                && panel.bottom() <= size[1] + 1.0,
+                            "modal exceeds window {language:?} {dialog} {size:?}: {panel:?}"
+                        );
+                        let buttons = &app.audit.buttons;
+                        assert!(!buttons.is_empty());
+                        assert!((buttons[0].1.right()-(panel.right()-t::LG-1.0)).abs()<3.0,"primary is not right-aligned {language:?} {dialog}: {panel:?} {buttons:?}");
+                        for pair in buttons.windows(2) {
+                            assert!(
+                                pair[1].1.right() + 7.0 <= pair[0].1.left(),
+                                "buttons overlap {language:?} {dialog}: {buttons:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn large_library_and_results_only_render_bounded_visible_work() {
         let (ctx, mut app) = fixture();
         for i in 0..10_000 {
-            let name = format!("Very long script name {i:05} {}.js", "中文".repeat(60));
+            let name = format!("{i:05} {}.js", "长い名前한국어".repeat(30));
             app.library.scripts.push(crate::library::ScriptEntry {
                 search_key: name.to_lowercase(),
                 name,
@@ -696,106 +868,208 @@ mod tests {
                 path: format!("synthetic/{i}.js").into(),
             });
         }
-        let _ = render(&ctx, &mut app, [960.0, 680.0], 0.0);
-        let output = render(&ctx, &mut app, [960.0, 680.0], 2.0);
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [1120.0, 760.0], &mut tick);
+        let output = render(&ctx, &mut app, [1120.0, 760.0], 10.0);
+        assert!(
+            app.audit
+                .library
+                .unwrap()
+                .expand(0.5)
+                .contains_rect(app.audit.card.unwrap()),
+            "library card overflow {:?} {:?}",
+            app.audit.library,
+            app.audit.card
+        );
         assert_eq!(app.rows.len(), 10_000);
         assert!(
-            output.shapes.len() < 700,
-            "rows were not virtualized: {} shapes",
+            output.shapes.len() < 1000,
+            "not virtualized: {}",
             output.shapes.len()
         );
-        let mut samples = Vec::new();
-        for frame in 0..300 {
-            let start = Instant::now();
-            let out = render(&ctx, &mut app, [960.0, 680.0], 3.0 + frame as f64 / 60.0);
-            let _ = ctx.tessellate(out.shapes, out.pixels_per_point);
-            samples.push(start.elapsed().as_secs_f64() * 1000.0);
-        }
-        samples.sort_by(f64::total_cmp);
-        println!(
-            "PERF_10K_UI {{\"p50_ms\":{:.3},\"p95_ms\":{:.3},\"samples\":300}}",
-            samples[150], samples[285]
-        );
-        let allocation = app.rows.as_ptr();
+        let pointer = app.rows.as_ptr();
         app.update_rows();
-        assert_eq!(allocation, app.rows.as_ptr());
+        assert_eq!(pointer, app.rows.as_ptr());
         app.search = "09999".into();
         app.update_rows();
         assert_eq!(app.rows, vec![Row::Script(9999)]);
-        app.filter = Filter::Plugins;
-        app.update_rows();
-        assert!(app.rows.is_empty());
+        app.outcome = Some(Outcome {
+            installed_scripts: (0..10_000).map(|n| format!("synthetic-{n}.js")).collect(),
+            ..Default::default()
+        });
+        settle(&ctx, &mut app, [1120.0, 760.0], &mut tick);
+        let output = render(&ctx, &mut app, [1120.0, 760.0], 20.0);
+        assert!(
+            output.shapes.len() < 1200,
+            "unbounded result UI: {}",
+            output.shapes.len()
+        );
     }
     #[test]
-    fn long_failure_is_modal_and_does_not_change_import_layout() {
+    fn settings_preview_can_cancel_without_mutating_saved_preferences() {
         let (ctx, mut app) = fixture();
-        for (index, size) in [[800.0, 560.0], [960.0, 680.0], [1440.0, 900.0]]
-            .into_iter()
-            .enumerate()
-        {
-            app.outcome = None;
-            for i in 0..3 {
-                let _ = render(&ctx, &mut app, size, (index * 10 + i) as f64);
-            }
-            let baseline = render(&ctx, &mut app, size, 40.0);
-            app.outcome = Some(Outcome {
-                failures: vec![("script.js".into(), "very-long-input-path/".repeat(100))],
-                ..Default::default()
-            });
-            for i in 0..3 {
-                let _ = render(&ctx, &mut app, size, 42.0 + i as f64);
-            }
-            let modal = render(&ctx, &mut app, size, 46.0);
-            fn rail_rects(out: &egui::FullOutput) -> Vec<egui::Rect> {
-                out.shapes
-                    .iter()
-                    .filter_map(|s| match &s.shape {
-                        egui::Shape::Rect(r)
-                            if s.clip_rect.max.x <= 246.1 && r.rect.width() > 180.0 =>
-                        {
-                            Some(r.rect)
-                        }
-                        _ => None,
-                    })
-                    .collect()
-            }
-            assert!(!rail_rects(&baseline).is_empty());
-            assert_eq!(
-                rail_rects(&baseline),
-                rail_rects(&modal),
-                "result resized the import rail"
-            );
-            assert!(ctx.memory(|m| m.top_modal_layer().is_some()));
-            fn modal_fits(shape: &egui::Shape, size: [f32; 2]) -> bool {
-                match shape {
-                    egui::Shape::Rect(r) => {
-                        r.fill == t::SURFACE_CONTAINER_HIGH
-                            && r.rect.width() <= size[0] - 40.0
-                            && r.rect.height() <= size[1]
-                            && r.rect.min.y >= 0.0
-                            && r.rect.max.y <= size[1]
-                    }
-                    egui::Shape::Vec(shapes) => shapes.iter().any(|s| modal_fits(s, size)),
-                    _ => false,
-                }
-            }
-            assert!(
-                modal.shapes.iter().any(|s| modal_fits(&s.shape, size)),
-                "modal exceeded viewport"
-            );
-        }
+        let original = app.settings.clone();
+        app.open_settings();
+        let draft = app.settings_draft.as_mut().unwrap();
+        draft.language = Language::Ko;
+        draft.theme = Theme::Light;
+        draft.scale_percent = 125;
+        app.apply_style(&ctx);
+        assert_eq!(app.tr(K::Settings), Language::Ko.tr(K::Settings));
+        assert_eq!(app.settings, original);
+        app.cancel_settings(&ctx);
+        assert_eq!(app.settings, original);
+        assert!(app.settings_draft.is_none());
+        assert_eq!(ctx.zoom_factor(), 1.0);
     }
     #[test]
-    fn queue_deduplicates_and_is_bounded_without_stat_calls() {
+    fn restart_offer_waits_for_results_success_and_end_of_queue() {
+        let (_, mut app) = fixture();
+        app.reload_scripts = 1;
+        app.outcome = Some(Outcome::default());
+        app.dismiss_outcome();
+        assert!(app.restart_prompt);
+        app.decline_restart();
+        assert_eq!(app.reload_scripts, 0);
+        app.outcome = Some(Outcome {
+            failures: vec![("bad.zip".into(), "invalid".into())],
+            ..Default::default()
+        });
+        app.dismiss_outcome();
+        assert!(!app.restart_prompt);
+        app.settings.restart_prompt = RestartPrompt::Plugins;
+        app.reload_scripts = 1;
+        app.dismiss_outcome();
+        assert!(!app.restart_prompt);
+        app.reload_plugins = 1;
+        app.queue.push("next.zip".into());
+        app.dismiss_outcome();
+        assert!(!app.restart_prompt);
+        app.queue.clear();
+        app.dismiss_outcome();
+        assert!(app.restart_prompt);
+        assert!(
+            app.restart_cancel.is_none(),
+            "offering restart must not execute it"
+        );
+    }
+    #[test]
+    fn queue_still_deduplicates_and_limits_without_filesystem_calls() {
         let (_, mut app) = fixture();
         app.enqueue(vec!["missing.js".into(), "missing.js".into()]);
         assert_eq!(app.queue.len(), 1);
-        app.enqueue(
-            (0..300)
-                .map(|n| PathBuf::from(format!("missing{n}.js")))
-                .collect(),
-        );
+        app.enqueue((0..300).map(|n| format!("{n}.js").into()).collect());
         assert_eq!(app.queue.len(), 256);
         assert!(app.toast.is_some());
+    }
+    #[test]
+    fn conflict_cancel_never_executes_or_overwrites() {
+        let (_, mut app) = fixture();
+        let temp = tempfile::tempdir().unwrap();
+        let unit = PlannedUnit {
+            kind: UnitKind::Script,
+            display: "sample.js".into(),
+            source: temp.path().join("new.js"),
+            dest: temp.path().join("old.js"),
+        };
+        std::fs::write(&unit.dest, "original").unwrap();
+        app.conflicts.push_back(unit.clone());
+        app.pending_plan = Some(InstallPlan {
+            units: vec![],
+            conflicts: vec![],
+            failures: vec![],
+            _temp: Some(TempGuard(temp.path().join("unused"))),
+        });
+        app.cancel_batch();
+        assert!(app.pending_plan.is_none());
+        assert!(app.conflicts.is_empty());
+        assert_eq!(std::fs::read_to_string(unit.dest).unwrap(), "original");
+    }
+    #[test]
+    fn cancelling_conflicts_keeps_prior_input_failures_visible() {
+        let (_, mut app) = fixture();
+        app.pending_plan = Some(InstallPlan {
+            units: vec![],
+            conflicts: vec![],
+            failures: vec![("broken.zip".into(), "invalid archive".into())],
+            _temp: None,
+        });
+        app.cancel_batch();
+        assert_eq!(app.outcome.as_ref().unwrap().failures.len(), 1);
+    }
+    #[test]
+    fn physical_dpi_and_zoom_keep_settings_actions_reachable() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        for dpi in [1.0, 1.25, 1.5, 2.0] {
+            for scale in [90, 100, 110, 125] {
+                app.settings.scale_percent = scale;
+                app.settings.language = Language::En;
+                app.settings_draft = None;
+                app.open_settings();
+                for _ in 0..5 {
+                    tick += 1.0;
+                    let mut input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(900.0, 620.0),
+                        )),
+                        time: Some(tick),
+                        ..Default::default()
+                    };
+                    input
+                        .viewports
+                        .get_mut(&egui::ViewportId::ROOT)
+                        .unwrap()
+                        .native_pixels_per_point = Some(dpi);
+                    let _ = ctx.run(input, |ctx| app.draw(ctx));
+                }
+                let screen = ctx.screen_rect();
+                let rect = app.audit.dialog.unwrap();
+                assert!(
+                    screen.expand(1.0).contains_rect(rect),
+                    "dpi={dpi} scale={scale}: {screen:?} {rect:?}"
+                );
+                for (_, rect) in &app.audit.buttons {
+                    assert!(screen.contains_rect(*rect));
+                }
+                app.cancel_settings(&ctx);
+            }
+        }
+    }
+    #[test]
+    fn escape_cancels_preferences_and_defers_restart_without_side_effects() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        app.open_settings();
+        app.settings_draft.as_mut().unwrap().language = Language::Ja;
+        settle(&ctx, &mut app, [1120.0, 760.0], &mut tick);
+        let escape = egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: Some(egui::Key::Escape),
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let _ = ctx.run(
+            egui::RawInput {
+                events: vec![escape.clone()],
+                ..Default::default()
+            },
+            |ctx| app.draw(ctx),
+        );
+        assert!(app.settings_draft.is_none());
+        assert_eq!(app.settings.language, Language::Zh);
+        app.restart_prompt = true;
+        settle(&ctx, &mut app, [1120.0, 760.0], &mut tick);
+        let _ = ctx.run(
+            egui::RawInput {
+                events: vec![escape],
+                ..Default::default()
+            },
+            |ctx| app.draw(ctx),
+        );
+        assert!(!app.restart_prompt);
+        assert!(app.restart_cancel.is_none());
     }
 }

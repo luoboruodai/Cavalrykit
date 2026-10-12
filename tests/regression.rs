@@ -211,11 +211,67 @@ fn failed_plugin_staging_preserves_entire_old_plugin() {
 }
 
 #[test]
-fn embedded_window_icon_matches_checked_in_ico() {
-    let ico = image::load_from_memory(include_bytes!("../assets/icon.ico"))
-        .unwrap()
-        .to_rgba8();
+fn embedded_window_icon_matches_platform_asset() {
+    #[cfg(target_os = "macos")]
+    let bytes = include_bytes!("../assets/icon-macos-window.png").as_slice();
+    #[cfg(not(target_os = "macos"))]
+    let bytes = include_bytes!("../assets/icon.ico").as_slice();
+    let ico = image::load_from_memory(bytes).unwrap().to_rgba8();
     let window = cavalrykit::ui::icon::window_icon();
     assert_eq!((window.width, window.height), ico.dimensions());
     assert_eq!(window.rgba, ico.into_raw());
+}
+
+#[test]
+fn nested_plugin_destination_is_rejected_before_recursive_copy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("plugin");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("definitions.json"), "{}").unwrap();
+    let dest = source.join("nested/copy");
+    let result = installer::execute(
+        vec![PlannedUnit {
+            kind: UnitKind::Plugin,
+            display: "plugin".into(),
+            source: source.clone(),
+            dest: dest.clone(),
+        }],
+        vec![],
+    );
+    assert_eq!(result.failures.len(), 1);
+    assert!(!dest.exists());
+    assert_eq!(
+        fs::read_to_string(source.join("definitions.json")).unwrap(),
+        "{}"
+    );
+}
+
+#[test]
+fn foreign_platform_traversal_and_drive_paths_are_rejected() {
+    use std::io::Write;
+    for (index, name) in [
+        "../escape.js",
+        r"..\escape.js",
+        r"folder\..\escape.js",
+        r"C:\escape.js",
+        r"\\server\share\escape.js",
+        "/absolute.js",
+        "file.js:stream",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = tmp.path().join(format!("{index}.zip"));
+        let mut writer = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
+        writer
+            .start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"synthetic").unwrap();
+        writer.finish().unwrap();
+        assert!(
+            cavalrykit::unzipper::extract_zip(&zip, &tmp.path().join("out")).is_err(),
+            "accepted {name}"
+        );
+    }
 }

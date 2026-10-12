@@ -1,85 +1,218 @@
-//! Cached filtering and virtualized rows: frame work is proportional to visible entries.
-use super::app::{CavalryKitApp, Filter, Row};
-use super::theme as t;
-use crate::paths;
-use egui::{CursorIcon, Pos2, RichText, Sense, Stroke, StrokeKind, Vec2};
-
+use super::{
+    app::{CavalryKitApp, Filter, Row},
+    theme as t,
+};
+use crate::{i18n::Key as K, paths};
+use egui::{Pos2, Stroke, Vec2};
 impl CavalryKitApp {
     pub(crate) fn show_library(&mut self, ui: &mut egui::Ui) {
+        let p = self.p();
+        let lang = self.prefs().language;
         ui.horizontal(|ui| {
-            ui.label(t::medium("Cavalry 装备库", 24.0).color(t::ON_SURFACE));
-            count_badge(ui, self.library.scripts.len() + self.library.plugins.len());
+            ui.label(t::heading(lang.tr(K::Library), 22.0, p));
+            ui.label(t::text(
+                lang.tr(K::Count).replace(
+                    "{n}",
+                    &(self.library.scripts.len() + self.library.plugins.len()).to_string(),
+                ),
+                12.0,
+                p.muted,
+            ));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_enabled_ui(self.busy.is_none() && self.conflicts.is_empty(), |ui| {
-                    if t::button(ui, "刷新", t::Btn::Text(t::PRIMARY), 34.0).clicked() {
+                    if t::button(ui, lang.tr(K::Refresh), t::Button::Secondary, p).clicked() {
                         self.refresh_library();
                     }
                 });
             });
         });
-        ui.add_space(12.0);
-        ui.horizontal(|ui| {
-            let index = match self.filter {
-                Filter::All => 0,
-                Filter::Scripts => 1,
-                Filter::Plugins => 2,
-            };
-            let picked = t::segmented(ui, &["全部", "脚本", "插件"], index);
-            self.filter = [Filter::All, Filter::Scripts, Filter::Plugins][picked];
-            t::search_input(ui, &mut self.search, ui.available_width().max(100.0));
-        });
-        ui.add_space(12.0);
+        ui.add_space(t::MD);
+        let wide = ui.available_width() >= 600.0;
+        if wide {
+            ui.horizontal(|ui| {
+                self.filters(ui);
+                ui.add_space(t::SM);
+                self.search_box(ui);
+            });
+        } else {
+            self.filters(ui);
+            self.search_box(ui);
+        }
+        ui.add_space(t::MD);
         self.update_rows();
-        let card_h = (ui.available_height() - 56.0).max(120.0);
-        egui::Frame::new()
-            .fill(t::SURFACE)
-            .stroke(Stroke::new(1.0_f32, t::OUTLINE_VARIANT))
-            .corner_radius(t::RADIUS_MD)
-            .inner_margin(egui::Margin::symmetric(8, 6))
+        let height = (ui.available_height() - 72.0).max(96.0);
+        let card = egui::Frame::new()
+            .fill(p.surface)
+            .stroke(Stroke::new(1.0_f32, p.border))
+            .corner_radius(8)
+            .inner_margin(t::MD)
             .show(ui, |ui| {
-                ui.set_min_height(card_h);
-                ui.set_max_height(card_h);
-                ui.set_min_width(ui.available_width());
+                ui.set_min_height(height);
+                ui.set_max_height(height);
+
                 if self.rows.is_empty() {
-                    let searching = !self.search.trim().is_empty();
-                    empty_state(
-                        ui,
-                        card_h,
-                        searching,
-                        if searching {
-                            "无匹配结果"
-                        } else if self.busy.is_some() {
-                            "正在读取装备库…"
-                        } else {
-                            "装备库还是空的"
-                        },
-                        if searching {
-                            "尝试其他名称、分组或作者"
-                        } else {
-                            "拖入脚本或压缩包，或点击「选择文件」"
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(ui.available_width(), height),
+                        egui::Layout::top_down(egui::Align::Center),
+                        |ui| {
+                            ui.add_space((height / 2.0 - 56.0).max(16.0));
+                            let searching = !self.search.trim().is_empty();
+                            ui.label(t::heading(
+                                lang.tr(if searching {
+                                    K::NoResults
+                                } else if self.busy.is_some() {
+                                    K::ScanBusy
+                                } else {
+                                    K::EmptyLibrary
+                                }),
+                                16.0,
+                                p,
+                            ));
+                            ui.add(
+                                egui::Label::new(t::text(
+                                    lang.tr(if searching {
+                                        K::NoResultsHint
+                                    } else {
+                                        K::EmptyHint
+                                    }),
+                                    13.0,
+                                    p.muted,
+                                ))
+                                .wrap(),
+                            );
+                            if searching
+                                && t::button(ui, lang.tr(K::ClearSearch), t::Button::Secondary, p)
+                                    .clicked()
+                            {
+                                self.search.clear();
+                            }
                         },
                     );
                 } else {
                     egui::ScrollArea::vertical()
                         .id_salt("library-list")
                         .auto_shrink([false, false])
-                        .max_height(card_h)
-                        .show_rows(ui, 56.0, self.rows.len(), |ui, visible| {
-                            for index in visible {
+                        .max_height(height)
+                        .show_rows(ui, t::ROW, self.rows.len(), |ui, range| {
+                            for index in range {
                                 let (name, kind, meta, path) = match self.rows[index] {
                                     Row::Script(i) => {
                                         let e = &self.library.scripts[i];
-                                        (&e.name, "脚本", e.group.as_deref(), &e.path)
+                                        (&e.name, K::Scripts, e.group.as_deref(), &e.path)
                                     }
                                     Row::Plugin(i) => {
                                         let e = &self.library.plugins[i];
-                                        (&e.name, "插件", e.author.as_deref(), &e.path)
+                                        (&e.name, K::Plugins, e.author.as_deref(), &e.path)
                                     }
                                 };
-                                ui.push_id((kind, path), |ui| {
+                                let path_key = path.clone();
+                                ui.push_id((kind as u32, &path_key), |ui| {
                                     ui.add_enabled_ui(self.busy.is_none(), |ui| {
-                                        if list_row(ui, name, Some(kind), meta, path) {
+                                        let (rect, response) = ui.allocate_exact_size(
+                                            Vec2::new(ui.available_width(), t::ROW),
+                                            egui::Sense::hover(),
+                                        );
+                                        if response.hovered() {
+                                            ui.painter().rect_filled(rect, 6, p.raised);
+                                        }
+                                        let tile = egui::Rect::from_center_size(
+                                            Pos2::new(rect.left() + 16.0, rect.center().y),
+                                            Vec2::splat(32.0),
+                                        );
+                                        let tile_color = t::mix(p.surface, p.accent, 0.10);
+                                        ui.painter().rect_filled(tile, 6, tile_color);
+                                        let code = if kind == K::Scripts { "JS" } else { "PL" };
+                                        let g = ui.painter().layout_no_wrap(
+                                            code.into(),
+                                            t::medium(11.0),
+                                            t::ink(tile_color),
+                                        );
+                                        ui.painter().galley(
+                                            tile.center() - g.size() / 2.0,
+                                            g,
+                                            t::ink(tile_color),
+                                        );
+                                        let actions = [K::Reveal, K::Uninstall]
+                                            .into_iter()
+                                            .map(|key| {
+                                                ui.painter()
+                                                    .layout_no_wrap(
+                                                        lang.tr(key).into(),
+                                                        t::medium(14.0),
+                                                        p.text,
+                                                    )
+                                                    .size()
+                                                    .x
+                                                    .max(32.0)
+                                                    + 32.0
+                                            })
+                                            .sum::<f32>()
+                                            + t::SM;
+                                        let x = rect.left() + 40.0;
+                                        let width = (rect.width() - 40.0 - actions - 8.0).max(24.0);
+                                        let name_g = t::label_truncated(
+                                            ui,
+                                            name,
+                                            t::font(14.0),
+                                            p.text,
+                                            width,
+                                        );
+                                        let name_h = name_g.size().y;
+                                        ui.painter().galley(
+                                            Pos2::new(x, rect.center().y - 18.0),
+                                            name_g,
+                                            p.text,
+                                        );
+                                        let subtitle = if let Some(value) = meta {
+                                            format!("{} · {value}", lang.tr(kind))
+                                        } else {
+                                            lang.tr(kind).into()
+                                        };
+                                        let g = t::label_truncated(
+                                            ui,
+                                            &subtitle,
+                                            t::font(12.0),
+                                            p.muted,
+                                            width,
+                                        );
+                                        ui.painter().galley(
+                                            Pos2::new(x, rect.center().y - 18.0 + name_h + 4.0),
+                                            g,
+                                            p.muted,
+                                        );
+                                        response.on_hover_text(name);
+                                        let action_rect = egui::Rect::from_min_max(
+                                            Pos2::new(
+                                                rect.right() - actions,
+                                                rect.center().y - 18.0,
+                                            ),
+                                            Pos2::new(rect.right(), rect.center().y + 18.0),
+                                        );
+                                        let mut actions_ui = ui.new_child(
+                                            egui::UiBuilder::new().max_rect(action_rect).layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                            ),
+                                        );
+                                        if t::button(
+                                            &mut actions_ui,
+                                            lang.tr(K::Uninstall),
+                                            t::Button::QuietDanger,
+                                            p,
+                                        )
+                                        .clicked()
+                                        {
                                             self.confirm_uninstall = Some(path.clone());
+                                        }
+                                        if t::button(
+                                            &mut actions_ui,
+                                            lang.tr(K::Reveal),
+                                            t::Button::Quiet,
+                                            p,
+                                        )
+                                        .on_hover_text(lang.tr(K::RevealHint))
+                                        .clicked()
+                                        {
+                                            paths::reveal_in_file_manager(path);
                                         }
                                     });
                                 });
@@ -87,294 +220,87 @@ impl CavalryKitApp {
                         });
                 }
             });
-        ui.add_space(8.0);
-        let hint = self.busy.unwrap_or_else(|| {
-            if !self.status_line.is_empty() {
-                &self.status_line
-            } else if self.cavalry_running {
-                "新装脚本即时生效；插件需重启 Cavalry"
-            } else {
-                "启动 Cavalry 后加载新安装的内容"
-            }
-        });
+        self.audit.card = Some(card.response.rect);
+        ui.add_space(t::SM);
+        let hint = if let Some(status) = self.busy {
+            lang.tr(status)
+        } else if self.paths.is_none() {
+            lang.tr(K::DirectoriesUnavailable)
+        } else {
+            lang.tr(K::IdleHint)
+        };
         ui.add(
-            egui::Label::new(
-                RichText::new(format!("v{} · {hint}", env!("CARGO_PKG_VERSION")))
-                    .font(t::font(t::BODY_SM))
-                    .color(t::ON_SURFACE_VARIANT),
-            )
+            egui::Label::new(t::text(
+                format!("v{} · {hint}", env!("CARGO_PKG_VERSION")),
+                12.0,
+                p.muted,
+            ))
             .wrap(),
         );
     }
-}
-
-/// MD3 list 行:56px;图标块 + 名称 + meta + 右侧「显示/卸载」文字钮;悬停中性罩
-fn list_row(
-    ui: &mut egui::Ui,
-    name: &str,
-    kind: Option<&str>,
-    meta: Option<&str>,
-    path: &std::path::Path,
-) -> bool {
-    let height = 56.0_f32;
-    let full_w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(full_w, height), Sense::hover());
-    let resp = resp.on_hover_text(name);
-    let k = ui.ctx().animate_bool_with_time(
-        egui::Id::new(("ck-md3row", path)),
-        resp.hovered(),
-        t::ANIM_HOVER,
-    );
-    let painter = ui.painter_at(rect);
-    if k > 0.0 {
-        painter.rect_filled(
-            rect.shrink2(Vec2::new(2.0, 1.0)),
-            egui::CornerRadius::same(t::RADIUS_SM),
-            t::with_alpha(t::STATE_HOVER_NEUTRAL, k),
-        );
+    fn filters(&mut self, ui: &mut egui::Ui) {
+        let p = self.p();
+        let lang = self.prefs().language;
+        ui.horizontal(|ui| {
+            for (filter, key) in [
+                (Filter::All, K::All),
+                (Filter::Scripts, K::Scripts),
+                (Filter::Plugins, K::Plugins),
+            ] {
+                let selected = self.filter == filter;
+                let response = ui.add_sized(
+                    [64.0, 36.0],
+                    egui::SelectableLabel::new(
+                        selected,
+                        t::text(
+                            lang.tr(key),
+                            14.0,
+                            if selected { p.on_accent } else { p.muted },
+                        ),
+                    ),
+                );
+                if response.clicked() {
+                    self.filter = filter;
+                }
+            }
+        });
     }
-
-    // 图标块
-    t::icon_tile(
-        &painter,
-        Pos2::new(rect.min.x + 28.0, rect.center().y),
-        if kind == Some("插件") { "PL" } else { "JS" },
-    );
-
-    // 名称 + meta
-    let text_x = rect.min.x + 56.0;
-    let actions_slot = 112.0_f32;
-    let text_max = (rect.max.x - actions_slot - 20.0 - text_x).max(24.0);
-    // One eliding layout instead of O(n²) per-character trial shaping.
-    let name_g = elided(&painter, name, t::font(t::BODY_MD), t::ON_SURFACE, text_max);
-    let meta_text = [kind, meta]
-        .into_iter()
-        .flatten()
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" · ");
-    let name_h = name_g.size().y;
-    let has_meta = !meta_text.is_empty();
-    let block_h = if has_meta {
-        name_h + 2.0 + 15.0
-    } else {
-        name_h
-    };
-    let y0 = rect.center().y - block_h / 2.0;
-    painter.galley(Pos2::new(text_x, y0), name_g, t::ON_SURFACE);
-    if has_meta {
-        let mg = elided(
-            &painter,
-            &meta_text,
-            t::font(t::BODY_SM),
-            t::ON_SURFACE_VARIANT,
-            text_max,
-        );
-        painter.galley(
-            Pos2::new(text_x, y0 + name_h + 2.0),
-            mg,
-            t::ON_SURFACE_VARIANT,
-        );
+    fn search_box(&mut self, ui: &mut egui::Ui) {
+        let p = self.p();
+        let lang = self.prefs().language;
+        ui.horizontal(|ui| {
+            let clear = 32.0;
+            let width = (ui.available_width() - clear - t::SM).max(96.0);
+            let response = ui.add_sized(
+                [width, 36.0],
+                egui::TextEdit::singleline(&mut self.search)
+                    .id(egui::Id::new("library-search"))
+                    .hint_text(lang.tr(K::Search))
+                    .font(t::font(14.0))
+                    .margin(egui::Margin::symmetric(8, 8)),
+            );
+            response.on_hover_text(lang.tr(K::Search));
+            let clear_response = ui
+                .scope(|ui| {
+                    ui.spacing_mut().button_padding = Vec2::splat(t::SM);
+                    ui.add_enabled(
+                        !self.search.is_empty(),
+                        egui::Button::new(t::text("×", 18.0, p.muted))
+                            .min_size(Vec2::new(clear, 36.0)),
+                    )
+                })
+                .inner
+                .on_hover_text(lang.tr(K::ClearSearch));
+            clear_response.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    ui.is_enabled(),
+                    lang.tr(K::ClearSearch),
+                )
+            });
+            if clear_response.clicked() {
+                self.search.clear();
+            }
+        });
     }
-
-    // 右侧文字钮:显示 / 卸载(卸载 error 红)
-    let un_rect = egui::Rect::from_min_size(
-        Pos2::new(rect.max.x - 8.0 - 56.0, rect.center().y - 16.0),
-        Vec2::new(56.0, 32.0),
-    );
-    let sh_rect = egui::Rect::from_min_size(
-        Pos2::new(un_rect.min.x - 4.0 - 56.0, rect.center().y - 16.0),
-        Vec2::new(56.0, 32.0),
-    );
-    let un_resp = ui
-        .interact(un_rect, egui::Id::new(("ck-un", path)), Sense::click())
-        .on_hover_text("移入废纸篓");
-    let sh_resp = ui
-        .interact(sh_rect, egui::Id::new(("ck-sh", path)), Sense::click())
-        .on_hover_text("在文件管理器中显示");
-    sh_resp.widget_info(|| {
-        egui::WidgetInfo::labeled(
-            egui::WidgetType::Button,
-            ui.is_enabled(),
-            format!("显示 {name}"),
-        )
-    });
-    un_resp.widget_info(|| {
-        egui::WidgetInfo::labeled(
-            egui::WidgetType::Button,
-            ui.is_enabled(),
-            format!("卸载 {name}"),
-        )
-    });
-    let sh_press = sh_resp.hovered() && ui.ctx().input(|i| i.pointer.primary_down());
-    let un_press = un_resp.hovered() && ui.ctx().input(|i| i.pointer.primary_down());
-    paint_text_btn(
-        &painter,
-        sh_rect,
-        "显示",
-        t::PRIMARY,
-        t::interact_t(ui, sh_resp.id, sh_resp.hovered()),
-        sh_press,
-    );
-    paint_text_btn(
-        &painter,
-        un_rect,
-        "卸载",
-        t::ERROR,
-        t::interact_t(ui, un_resp.id, un_resp.hovered()),
-        un_press,
-    );
-    if un_resp.hovered() || sh_resp.hovered() {
-        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-    }
-    if sh_resp.clicked() {
-        paths::reveal_in_file_manager(path);
-    }
-    un_resp.clicked()
-}
-
-/// 行内文字钮:悬停罩 + 文字颜色过渡(微交互)
-fn paint_text_btn(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    text: &str,
-    color: egui::Color32,
-    k: f32,
-    pressed: bool,
-) {
-    // 无底色罩(不泛白):交互只走文字色 + 下划线;按下文字直接最深
-    let _ = rect;
-    let _ = pressed;
-    // 悬停/按下文字加深(显示→更深紫,卸载→更深红;按下再深一档)
-    let deep = if color == t::ERROR {
-        egui::Color32::from_rgb(0x8a, 0x1d, 0x17)
-    } else {
-        t::ON_PRIMARY_CONTAINER
-    };
-    let c = if pressed {
-        deep
-    } else {
-        t::lerp_color(color, deep, k)
-    };
-    let g = painter.layout_no_wrap(text.to_owned(), t::font_medium(t::LABEL_LG), c);
-    let (gw, gh) = (g.size().x, g.size().y);
-    painter.galley(rect.center() - g.size() / 2.0, g, c);
-    // 悬停下划线扫入(从中点向两侧展开,过渡感)
-    if k > 0.02 && !pressed {
-        let uw = gw * k;
-        let y = rect.center().y + gh / 2.0 + 2.0;
-        painter.line_segment(
-            [
-                Pos2::new(rect.center().x - uw / 2.0, y),
-                Pos2::new(rect.center().x + uw / 2.0, y),
-            ],
-            Stroke::new(2.0_f32, t::with_alpha(c, k)),
-        );
-    }
-}
-
-/// 居中空状态(搜索无结果 / 库为空):tonal 图标块 + 主文案 + 次文案,垂直居中于卡片
-fn empty_state(ui: &mut egui::Ui, card_h: f32, search: bool, title: &str, sub: &str) {
-    let w = ui.available_width();
-    let h = (card_h - 16.0).max(140.0);
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
-    let painter = ui.painter_at(rect);
-    let cx = rect.center().x;
-    let total_h = 56.0 + 16.0 + 20.0 + 6.0 + 17.0;
-    let top = rect.center().y - total_h / 2.0;
-    // 图标:56px 圆角 tonal 块(primary-container 底 + 主紫字形)
-    let tile = egui::Rect::from_center_size(Pos2::new(cx, top + 28.0), Vec2::splat(56.0));
-    painter.rect_filled(
-        tile,
-        egui::CornerRadius::same(t::RADIUS_LG),
-        t::PRIMARY_CONTAINER,
-    );
-    let ic = tile.center();
-    if search {
-        // 放大镜(与搜索框图标同语言)
-        painter.circle_stroke(
-            ic - Vec2::new(2.4, 2.4),
-            8.5,
-            Stroke::new(2.4_f32, t::PRIMARY),
-        );
-        painter.line_segment(
-            [ic + Vec2::new(4.6, 4.6), ic + Vec2::new(10.5, 10.5)],
-            Stroke::new(2.4_f32, t::PRIMARY),
-        );
-    } else {
-        // 托盘 + 下落箭头(呼应左轨拖放卡)
-        let tray = egui::Rect::from_center_size(ic + Vec2::new(0.0, 6.0), Vec2::new(24.0, 13.0));
-        painter.rect_stroke(
-            tray,
-            egui::CornerRadius::same(4),
-            Stroke::new(2.0_f32, t::PRIMARY),
-            StrokeKind::Inside,
-        );
-        painter.line_segment(
-            [ic + Vec2::new(0.0, -13.0), ic + Vec2::new(0.0, -1.0)],
-            Stroke::new(2.2_f32, t::PRIMARY),
-        );
-        painter.line_segment(
-            [ic + Vec2::new(-4.5, -5.5), ic + Vec2::new(0.0, -1.0)],
-            Stroke::new(2.2_f32, t::PRIMARY),
-        );
-        painter.line_segment(
-            [ic + Vec2::new(4.5, -5.5), ic + Vec2::new(0.0, -1.0)],
-            Stroke::new(2.2_f32, t::PRIMARY),
-        );
-    }
-    // 主文案 + 次文案,水平居中
-    let g1 = painter.layout_no_wrap(title.to_owned(), t::font_medium(t::TITLE_SM), t::ON_SURFACE);
-    let g1_h = g1.size().y;
-    painter.galley(
-        Pos2::new(cx - g1.size().x / 2.0, top + 56.0 + 16.0),
-        g1,
-        t::ON_SURFACE,
-    );
-    let g2 = painter.layout_no_wrap(sub.to_owned(), t::font(t::BODY_SM), t::ON_SURFACE_VARIANT);
-    painter.galley(
-        Pos2::new(cx - g2.size().x / 2.0, top + 56.0 + 16.0 + g1_h + 6.0),
-        g2,
-        t::ON_SURFACE_VARIANT,
-    );
-}
-
-/// 计数徽章:淡紫底 pill + 主紫小字(标题旁)
-fn count_badge(ui: &mut egui::Ui, count: usize) {
-    use egui::Pos2;
-    let g = ui.painter().layout_no_wrap(
-        format!("{count} 件"),
-        t::font_medium(t::LABEL_MD),
-        t::ON_SURFACE_VARIANT,
-    );
-    let (pad_x, pad_y) = (8.0_f32, 3.0_f32);
-    let size = Vec2::new(g.size().x + pad_x * 2.0, g.size().y + pad_y * 2.0);
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-    let painter = ui.painter_at(rect);
-    painter.rect(
-        rect,
-        egui::CornerRadius::same((size.y / 2.0).round() as u8),
-        egui::Color32::TRANSPARENT,
-        Stroke::new(1.0_f32, t::OUTLINE),
-        egui::StrokeKind::Inside,
-    );
-    painter.galley(
-        Pos2::new(rect.min.x + pad_x, rect.min.y + pad_y),
-        g,
-        t::ON_SURFACE_VARIANT,
-    );
-}
-
-fn elided(
-    painter: &egui::Painter,
-    text: &str,
-    font: egui::FontId,
-    color: egui::Color32,
-    width: f32,
-) -> std::sync::Arc<egui::Galley> {
-    let mut job = egui::text::LayoutJob::simple_singleline(text.to_owned(), font, color);
-    job.wrap.max_width = width;
-    job.wrap.max_rows = 1;
-    job.wrap.break_anywhere = true;
-    painter.layout_job(job)
 }
