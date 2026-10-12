@@ -7,3 +7,5 @@ pub mod install_tab;
 pub mod library_tab;
 pub mod settings_panel;
 pub mod theme;
+
+pub(crate) mod motion;

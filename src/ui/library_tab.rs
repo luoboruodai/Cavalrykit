@@ -13,12 +13,10 @@ impl CavalryKitApp {
         self.update_rows();
         let card_height = ui.available_height();
         let card = egui::Frame::new()
-            .fill(p.panel)
-            .stroke(Stroke::new(1.0_f32, p.line))
-            .corner_radius(t::CARD_RADIUS)
-            .inner_margin(t::MD)
+            .fill(egui::Color32::TRANSPARENT)
+            .inner_margin(0)
             .show(ui, |ui| {
-                ui.set_min_height(card_height - 2.0 * t::MD - 2.0);
+                ui.set_min_height(card_height);
                 let (toolbar, _) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), t::CONTROL),
                     egui::Sense::hover(),
@@ -28,7 +26,7 @@ impl CavalryKitApp {
                     .replace("{n}", &self.rows.len().to_string());
                 let count_g = ui.painter().layout_no_wrap(count, t::font(12.0), p.muted);
                 let filter_width =
-                    (toolbar.width() - t::CONTROL - t::MD - count_g.size().x - t::MD).min(264.0);
+                    (toolbar.width() - t::CONTROL - t::MD - count_g.size().x - t::MD).min(240.0);
                 let filter_rect =
                     Rect::from_min_size(toolbar.min, Vec2::new(filter_width, t::CONTROL));
                 let mut filters = ui.new_child(
@@ -73,6 +71,13 @@ impl CavalryKitApp {
                 self.update_rows();
                 ui.add_space(t::MD);
                 let height = ui.available_height().max(48.0);
+                let reveal = super::motion::reveal(
+                    ui.ctx(),
+                    egui::Id::new("library-reveal"),
+                    egui::Id::new(self.filter as u8),
+                    0.24,
+                );
+                let reveal = super::motion::phase(reveal, 0.0, 1.0);
                 if self.rows.is_empty() {
                     ui.allocate_ui_with_layout(
                         Vec2::new(ui.available_width(), height),
@@ -143,24 +148,47 @@ impl CavalryKitApp {
                                                 Vec2::new(ui.available_width(), t::ROW),
                                                 egui::Sense::hover(),
                                             );
+                                            let rect = Rect::from_min_max(
+                                                rect.min,
+                                                rect.max - Vec2::new(0.0, t::SM),
+                                            );
                                             let hover = t::motion(
                                                 ui,
                                                 response.id.with("row-hover"),
                                                 response.hovered(),
                                             );
-                                            ui.painter().rect_filled(
-                                                rect,
-                                                t::RADIUS,
-                                                p.surface.gamma_multiply(hover),
-                                            );
+                                            let background =
+                                                t::mix(p.panel, p.surface, hover * 0.8);
+                                            ui.painter().rect_filled(rect, t::RADIUS, background);
+                                            if hover > 0.0 {
+                                                ui.painter().rect_filled(
+                                                    Rect::from_min_size(
+                                                        rect.min + Vec2::new(0.0, 12.0),
+                                                        Vec2::new(2.0, rect.height() - 24.0),
+                                                    ),
+                                                    1,
+                                                    p.accent_text.gamma_multiply(hover * 0.7),
+                                                );
+                                            }
+                                            let dy = 4.0 * (1.0 - reveal);
                                             let tile = Rect::from_center_size(
-                                                Pos2::new(rect.left() + 16.0, rect.center().y),
-                                                Vec2::splat(32.0),
+                                                Pos2::new(rect.left() + 28.0, rect.center().y + dy),
+                                                Vec2::splat(28.0),
                                             );
-                                            ui.painter().rect_filled(tile, t::RADIUS, p.surface);
+                                            let mut painter = ui.painter().clone();
+                                            painter.multiply_opacity(reveal);
+                                            painter.rect_filled(
+                                                tile,
+                                                6,
+                                                if kind == K::Plugins {
+                                                    p.selected
+                                                } else {
+                                                    t::mix(p.surface, p.panel, 0.5)
+                                                },
+                                            );
                                             icons::paint(
-                                                ui.painter(),
-                                                tile.shrink(8.0),
+                                                &painter,
+                                                tile.shrink(6.0),
                                                 if kind == K::Scripts {
                                                     Icon::Script
                                                 } else {
@@ -176,7 +204,7 @@ impl CavalryKitApp {
                                                 .painter()
                                                 .layout_no_wrap(
                                                     lang.tr(K::Reveal).into(),
-                                                    t::medium(14.0),
+                                                    t::font(13.0),
                                                     p.text,
                                                 )
                                                 .size()
@@ -184,13 +212,14 @@ impl CavalryKitApp {
                                                 + 32.0)
                                                 .max(64.0);
                                             let actions = reveal_width + t::CONTROL + t::SM;
-                                            let x = rect.left() + 48.0;
+                                            let x = rect.left() + 56.0;
                                             let width =
-                                                (rect.width() - 48.0 - actions - t::SM).max(16.0);
+                                                (rect.width() - 56.0 - actions - 2.0 * t::SM)
+                                                    .max(16.0);
                                             let name_g = t::label_truncated(
                                                 ui,
                                                 name,
-                                                t::font(14.0),
+                                                t::font(13.0),
                                                 p.text,
                                                 width,
                                             );
@@ -208,23 +237,11 @@ impl CavalryKitApp {
                                             );
                                             let text_height =
                                                 name_g.size().y + t::XS + sub_g.size().y;
-                                            let name_y = rect.center().y - text_height / 2.0_f32;
+                                            let name_y =
+                                                rect.center().y - text_height / 2.0_f32 + dy;
                                             let sub_y = name_y + name_g.size().y + t::XS;
-                                            ui.painter().galley(
-                                                Pos2::new(x, name_y),
-                                                name_g,
-                                                p.text,
-                                            );
-                                            ui.painter().galley(
-                                                Pos2::new(x, sub_y),
-                                                sub_g,
-                                                p.muted,
-                                            );
-                                            ui.painter().hline(
-                                                x..=rect.right(),
-                                                rect.bottom() - 1.0_f32,
-                                                Stroke::new(1.0_f32, p.line),
-                                            );
+                                            painter.galley(Pos2::new(x, name_y), name_g, p.text);
+                                            painter.galley(Pos2::new(x, sub_y), sub_g, p.muted);
                                             response.on_hover_text(format!("{name}\n{subtitle}"));
                                             let action_rect = Rect::from_min_max(
                                                 Pos2::new(
@@ -232,7 +249,7 @@ impl CavalryKitApp {
                                                     rect.center().y - t::CONTROL / 2.0_f32,
                                                 ),
                                                 Pos2::new(
-                                                    rect.right(),
+                                                    rect.right() - t::SM,
                                                     rect.center().y + t::CONTROL / 2.0_f32,
                                                 ),
                                             );
@@ -243,6 +260,10 @@ impl CavalryKitApp {
                                                         egui::Align::Center,
                                                     )),
                                             );
+                                            child.multiply_opacity(reveal);
+                                            if reveal < 0.85 {
+                                                child.disable();
+                                            }
                                             if t::icon_button(
                                                 &mut child,
                                                 &format!("{} · {name}", lang.tr(K::Uninstall)),
@@ -280,16 +301,13 @@ impl CavalryKitApp {
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), egui::Sense::hover());
         self.audit.search = Some(rect);
-        ui.painter().rect_filled(rect, t::RADIUS, p.surface);
+        ui.painter().rect_filled(rect, t::RADIUS, p.panel);
         let id = egui::Id::new("library-search");
         let focused = ui.memory(|m| m.has_focus(id));
         ui.painter().rect_stroke(
             rect,
             8,
-            Stroke::new(
-                if focused { 2.0_f32 } else { 1.0_f32 },
-                if focused { p.focus } else { p.line },
-            ),
+            Stroke::new(if focused { 1.0_f32 } else { 0.0_f32 }, p.focus),
             egui::StrokeKind::Inside,
         );
         icons::paint(
@@ -326,11 +344,11 @@ impl CavalryKitApp {
             Vec2::splat(t::CONTROL),
         );
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(clear_rect));
-        child.add_enabled_ui(!self.search.is_empty(), |ui| {
-            if t::icon_button(ui, lang.tr(K::ClearSearch), Icon::Close, false, p).clicked() {
-                self.search.clear();
-                ui.memory_mut(|m| m.request_focus(id));
-            }
-        });
+        if !self.search.is_empty()
+            && t::icon_button(&mut child, lang.tr(K::ClearSearch), Icon::Close, false, p).clicked()
+        {
+            self.search.clear();
+            child.memory_mut(|m| m.request_focus(id));
+        }
     }
 }

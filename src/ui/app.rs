@@ -597,6 +597,7 @@ impl CavalryKitApp {
             self.push_toast(self.tr(K::BusyClose));
         }
         let p = self.p();
+        let modal_open = self.modal_active();
         let compact = ctx.screen_rect().width() < 850.0;
         let gap = if compact { t::MD } else { t::LG };
         egui::TopBottomPanel::top("brand-header")
@@ -624,6 +625,9 @@ impl CavalryKitApp {
                         .max_rect(left),
                 );
                 rail.set_clip_rect(left.intersect(ui.clip_rect()));
+                if modal_open {
+                    rail.disable();
+                }
                 self.show_rail(&mut rail, left.height());
                 let mut library = ui.new_child(
                     egui::UiBuilder::new()
@@ -631,6 +635,9 @@ impl CavalryKitApp {
                         .max_rect(right),
                 );
                 library.set_clip_rect(right.intersect(ui.clip_rect()));
+                if modal_open {
+                    library.disable();
+                }
                 self.show_library(&mut library);
             });
         if let Some((text, at)) = &self.toast {
@@ -690,6 +697,62 @@ impl Drop for CavalryKitApp {
 /// Synthetic UI rendering only. Compiled out of production builds; never touches user libraries.
 #[cfg(feature = "ui-preview")]
 impl CavalryKitApp {
+    /// Deterministic synthetic demo input. This method is absent from release builds.
+    /// It never drops a real path, clicks the picker, saves preferences, or starts Worker.
+    pub fn preview_motion_input(&mut self, ctx: &egui::Context, frame: u32) -> egui::RawInput {
+        let mut input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(960.0, 660.0),
+            )),
+            time: Some(frame as f64 / 30.0),
+            ..Default::default()
+        };
+        let mut point = egui::pos2(950.0, 650.0);
+        if (24..52).contains(&frame) {
+            if let Some(rect) = self.audit.import_button {
+                point = rect.center();
+            }
+        }
+        if (55..90).contains(&frame) {
+            input.hovered_files.push(egui::HoveredFile {
+                path: None,
+                mime: "application/zip".into(),
+            });
+            if let Some(rect) = self.audit.install {
+                point = rect.center();
+            }
+        }
+        for (at, index) in [(101, 2), (132, 0)] {
+            if (at - 5..at + 10).contains(&frame) && self.audit.filters.len() == 3 {
+                point = self.audit.filters[index].center();
+            }
+            if (frame == at || frame == at + 1) && self.audit.filters.len() == 3 {
+                input.events.push(egui::Event::PointerButton {
+                    pos: self.audit.filters[index].center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == at,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+        }
+        if frame == 150 {
+            self.open_settings();
+        }
+        if frame == 177 {
+            self.settings_section = super::settings_panel::Section::Appearance;
+        }
+        if frame == 202 {
+            if let Some(s) = self.settings_draft.as_mut() {
+                s.theme = crate::settings::Theme::Light;
+            }
+        }
+        if frame == 222 {
+            self.cancel_settings(ctx);
+        }
+        input.events.insert(0, egui::Event::PointerMoved(point));
+        input
+    }
     pub fn preview(ctx: &egui::Context, language: crate::settings::Language, screen: &str) -> Self {
         super::fonts::setup(ctx);
         let mut app = Self::with_paths(ctx, vec![], None);
@@ -930,7 +993,10 @@ mod tests {
                         }
                         assert_eq!(app.audit.filters.len(), 3);
                         for rect in &app.audit.filters {
-                            assert!(right.contains_rect(*rect));
+                            assert!(
+                                right.expand(0.01).contains_rect(*rect),
+                                "filter outside column {rect:?} {right:?}"
+                            );
                             assert!(rect.bottom() + t::SM <= app.audit.search.unwrap().top());
                         }
                         let button = app.audit.import_button.unwrap();
@@ -1025,6 +1091,97 @@ mod tests {
             std::time::Duration::MAX,
             "steady hover should not run an animation loop"
         );
+    }
+    #[test]
+    fn opening_modal_blocks_an_in_flight_background_click_from_its_first_frame() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let target = app.audit.filters[2].center();
+        for pressed in [true, false] {
+            if !pressed {
+                app.open_settings();
+            }
+            tick += 0.016;
+            let _ = ctx.run(
+                egui::RawInput {
+                    time: Some(tick),
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    events: vec![
+                        egui::Event::PointerMoved(target),
+                        egui::Event::PointerButton {
+                            pos: target,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+        }
+        assert!(
+            app.filter == Filter::All,
+            "fading modal may not pass input through to the library"
+        );
+        assert!(app.confirm_uninstall.is_none());
+        assert!(app.busy.is_none());
+    }
+    #[test]
+    fn drop_choreography_keeps_targets_still_and_settles_without_an_idle_timer() {
+        for reduce in [false, true] {
+            let (ctx, mut app) = fixture();
+            app.settings.reduce_motion = reduce;
+            let mut tick = 0.0;
+            settle(&ctx, &mut app, [720.0, 496.0], &mut tick);
+            let button = app.audit.import_button.unwrap();
+            let search = app.audit.search.unwrap();
+            let filters = app.audit.filters.clone();
+            let mut art_top = Vec::new();
+            for frame in 0..90 {
+                let hovering = (4..48).contains(&frame);
+                let mut input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(720.0, 496.0),
+                    )),
+                    time: Some(tick + frame as f64 / 60.0),
+                    ..Default::default()
+                };
+                if hovering {
+                    input.hovered_files.push(egui::HoveredFile {
+                        path: None,
+                        mime: "application/zip".into(),
+                    });
+                }
+                let output = ctx.run(input, |ctx| app.draw(ctx));
+                assert_eq!(button, app.audit.import_button.unwrap());
+                assert_eq!(search, app.audit.search.unwrap());
+                assert_eq!(filters, app.audit.filters);
+                assert!(app
+                    .audit
+                    .install
+                    .unwrap()
+                    .contains_rect(app.audit.import_art.unwrap()));
+                art_top.push(app.audit.import_art.unwrap().top());
+                if frame == 89 {
+                    assert_eq!(
+                        output.viewport_output[&egui::ViewportId::ROOT].repaint_delay,
+                        Duration::MAX
+                    );
+                }
+            }
+            assert_eq!(art_top[0], art_top[89]);
+            if reduce {
+                assert_eq!(art_top[4], art_top[47]);
+            } else {
+                assert!(art_top[8] != art_top[47]);
+            }
+        }
     }
     #[test]
     fn all_settings_sections_keep_content_and_actions_inside_the_modal() {

@@ -19,7 +19,7 @@ impl CavalryKitApp {
         );
         let title = ui
             .painter()
-            .layout_no_wrap("CavalryKit".into(), t::medium(19.0), p.text);
+            .layout_no_wrap("CavalryKit".into(), t::medium(17.0), p.text);
         let title_rect = Rect::from_min_size(
             Pos2::new(
                 header.left() + 40.0,
@@ -134,17 +134,47 @@ impl CavalryKitApp {
         );
         self.audit.install = Some(rect);
         let dragging = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
-        let drag = t::motion(ui, egui::Id::new("import-drag"), dragging);
-        let fill = t::mix(p.panel, p.selected, drag);
-        let border = t::mix(p.line, p.focus, drag);
+        let drag_linear = ui.ctx().animate_bool_with_time(
+            egui::Id::new("import-drag"),
+            dragging,
+            if self.prefs().reduce_motion {
+                0.0
+            } else {
+                0.34
+            },
+        );
+        let drag = super::motion::cubic_out(drag_linear);
+        let fill = t::mix(p.panel, p.selected, drag * 0.55);
+        let border = p.focus.gamma_multiply(drag * 0.8);
         ui.painter().rect(
             rect,
             t::CARD_RADIUS,
             fill,
-            Stroke::new(1.0 + drag, border),
+            Stroke::new(drag, border),
             egui::StrokeKind::Inside,
         );
         let inner = rect.shrink(t::MD);
+        // Quiet corner marks give the drop area a shape without another full border.
+        let zone = Rect::from_min_max(
+            inner.min + Vec2::new(0.0, 8.0),
+            Pos2::new(inner.right(), rect.bottom() - 112.0),
+        );
+        let corner_color = t::mix(p.line, p.accent_text, drag * 0.7);
+        for (corner, dx, dy) in [
+            (zone.left_top(), 1.0, 1.0),
+            (zone.right_top(), -1.0, 1.0),
+            (zone.left_bottom(), 1.0, -1.0),
+            (zone.right_bottom(), -1.0, -1.0),
+        ] {
+            ui.painter().line_segment(
+                [corner + Vec2::new(0.0, 12.0 * dy), corner],
+                Stroke::new(1.0_f32, corner_color),
+            );
+            ui.painter().line_segment(
+                [corner, corner + Vec2::new(12.0 * dx, 0.0)],
+                Stroke::new(1.0_f32, corner_color),
+            );
+        }
         let status = if let Some(key) = self.busy {
             lang.tr(key).to_owned()
         } else if !self.conflicts.is_empty() {
@@ -211,7 +241,7 @@ impl CavalryKitApp {
         let tile_size = if compact { 32.0 } else { 56.0 };
         let mut title_job = egui::text::LayoutJob::simple(
             lang.tr(K::DropTitle).into(),
-            t::medium(14.0),
+            t::medium(13.0),
             p.text,
             inner.width(),
         );
@@ -222,20 +252,43 @@ impl CavalryKitApp {
                 .layout_no_wrap("JS · JSX · JSC · ZIP · 7z".into(), t::font(11.0), p.muted);
         let stack_h = tile_size + t::MD + title.size().y + t::SM + formats.size().y;
         let y = content.top() + ((content.height() - stack_h) / 2.0).max(0.0);
+        let spring = super::motion::settle(drag_linear);
         let tile = Rect::from_center_size(
-            Pos2::new(content.center().x, y + tile_size / 2.0 - 2.0 * drag),
-            Vec2::splat(tile_size),
+            Pos2::new(content.center().x, y + tile_size / 2.0 - 5.0 * spring),
+            Vec2::splat(tile_size + 4.0 * drag),
         );
-        ui.painter().rect_filled(tile, t::CARD_RADIUS, p.surface);
+        let tile_radius = (14.0 - 6.0 * drag).round() as u8;
+        if drag > 0.0 {
+            ui.painter().add(
+                egui::Shadow {
+                    offset: [0, 4],
+                    blur: 24,
+                    spread: 0,
+                    color: p.accent.gamma_multiply(0.10 * drag),
+                }
+                .as_shape(tile, tile_radius),
+            );
+        }
+        ui.painter()
+            .rect_filled(tile, tile_radius, t::mix(p.surface, p.selected, drag));
         icons::paint(
             ui.painter(),
             Rect::from_center_size(
                 tile.center(),
-                Vec2::splat(if compact { 20.0 } else { 28.0 }),
+                Vec2::splat(if compact { 20.0 } else { 26.0 }),
             ),
             Icon::Import,
-            p.accent_text,
+            t::mix(p.muted, p.accent_text, 0.5 + 0.5 * drag),
         );
+        // A brief expanding ring follows the initial pickup, then disappears at rest.
+        let pulse = (std::f32::consts::PI * drag_linear).sin().max(0.0);
+        if pulse > 0.01 {
+            ui.painter().circle_stroke(
+                tile.center(),
+                tile.width() / 2.0 + 6.0 * drag,
+                Stroke::new(1.0_f32, p.accent_text.gamma_multiply(0.20 * pulse)),
+            );
+        }
         let title_y = y + tile_size + t::MD;
         let title_h = title.size().y;
         self.audit.import_art = Some(Rect::from_min_max(

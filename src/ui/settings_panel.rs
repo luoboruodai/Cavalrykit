@@ -87,7 +87,15 @@ impl CavalryKitApp {
                         .auto_shrink([false, false])
                         .max_height(body_height - 2.0_f32 * t::MD)
                         .show(ui, |ui| {
-                            ui.add_enabled_ui(!saving, |ui| {
+                            let page = super::motion::reveal(
+                                ctx,
+                                egui::Id::new("settings-page-reveal"),
+                                egui::Id::new(self.settings_section as u8),
+                                0.20,
+                            );
+                            let page = super::motion::phase(page, 0.0, 1.0);
+                            ui.multiply_opacity(page);
+                            ui.add_enabled_ui(!saving && page >= 0.85, |ui| {
                                 if let Some(error) = &error {
                                     ui.label(t::text(lang.tr(K::SettingsError), 13.0, p.danger));
                                     egui::CollapsingHeader::new(lang.tr(K::TechnicalDetails)).show(
@@ -340,7 +348,7 @@ fn theme_choices(ui: &mut egui::Ui, draft: &mut Settings) {
                     t::motion(ui, response.id.with("theme-hover"), response.hovered()),
                 ),
                 Stroke::new(
-                    if selected || response.has_focus() {
+                    if response.has_focus() {
                         2.0_f32
                     } else {
                         1.0_f32

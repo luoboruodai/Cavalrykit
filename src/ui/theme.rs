@@ -8,8 +8,8 @@ pub const LG: f32 = 24.0;
 pub const CONTROL: f32 = 36.0;
 pub const ROW: f32 = 64.0;
 pub const HEADER: f32 = 56.0;
-pub const RADIUS: u8 = 8;
-pub const CARD_RADIUS: u8 = 12;
+pub const RADIUS: u8 = 6;
+pub const CARD_RADIUS: u8 = 8;
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
     pub bg: Color32,
@@ -73,8 +73,8 @@ fn readable(c: Color32, bg: Color32, ratio: f32) -> Color32 {
 }
 pub fn palette(s: &Settings) -> Palette {
     let (bg, accent) = match s.theme {
-        Theme::Cavalry => (rgb([24, 25, 28]), rgb([110, 216, 164])),
-        Theme::Light => (rgb([242, 244, 247]), rgb([25, 112, 75])),
+        Theme::Cavalry => (rgb([19, 23, 31]), rgb([7, 132, 48])),
+        Theme::Light => (rgb([243, 245, 248]), rgb([17, 121, 61])),
         Theme::Custom => (rgb(s.background), rgb(s.accent)),
     };
     let global_ink = ink(bg);
@@ -92,10 +92,10 @@ pub fn palette(s: &Settings) -> Palette {
     // not a darkened version of the canvas. Custom colors retain contrast-safe surfaces.
     let (panel, surface, raised, selected) = match s.theme {
         Theme::Cavalry => (
-            rgb([33, 35, 39]),
-            rgb([42, 45, 50]),
-            rgb([52, 56, 62]),
-            rgb([35, 57, 47]),
+            rgb([26, 31, 41]),
+            rgb([33, 39, 51]),
+            rgb([41, 49, 62]),
+            rgb([24, 48, 34]),
         ),
         Theme::Light => (
             Color32::WHITE,
@@ -139,11 +139,20 @@ pub fn palette(s: &Settings) -> Palette {
         text,
         muted,
         border: readable(mix(text, surface, 0.72), surface, 3.0),
-        line: mix(text, surface, if dark { 0.90 } else { 0.86 }),
+        line: mix(text, surface, if dark { 0.94 } else { 0.89 }),
         selected,
         accent,
         on_accent: ink(accent),
-        accent_text: readable_all(accent, 4.5),
+        // Keep the small active indicator lively; filled actions use a darker green
+        // so their white label stays readable instead of copying inaccessible colors.
+        accent_text: readable_all(
+            if s.theme == Theme::Cavalry {
+                rgb([29, 200, 88])
+            } else {
+                accent
+            },
+            4.5,
+        ),
         danger: readable_all(
             if dark {
                 rgb([255, 151, 151])
@@ -254,11 +263,11 @@ pub fn apply_settings(ctx: &egui::Context, s: &Settings) {
     style.spacing.scroll.foreground_color = true;
     style.visuals.widgets.noninteractive.fg_stroke.color = p.text;
     style.spacing.scroll.handle_min_length = 40.0;
-    style.animation_time = if s.reduce_motion { 0.0 } else { 0.14 };
-    style.text_styles.insert(egui::TextStyle::Body, font(14.0));
+    style.animation_time = if s.reduce_motion { 0.0 } else { 0.18 };
+    style.text_styles.insert(egui::TextStyle::Body, font(13.0));
     style
         .text_styles
-        .insert(egui::TextStyle::Button, medium(14.0));
+        .insert(egui::TextStyle::Button, medium(13.0));
     style.text_styles.insert(egui::TextStyle::Small, font(12.0));
     style
         .text_styles
@@ -303,7 +312,11 @@ pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui:
     };
     let galley = ui.painter().layout(
         label.into(),
-        medium(14.0),
+        if matches!(kind, Button::Quiet | Button::QuietDanger) {
+            font(13.0)
+        } else {
+            medium(13.0)
+        },
         ink,
         (ui.available_width() - 2.0 * MD).max(32.0),
     );
@@ -347,8 +360,33 @@ pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui:
     } else {
         egui::Stroke::NONE
     };
+    if primary && ui.is_enabled() {
+        ui.painter().add(
+            egui::Shadow {
+                offset: [0, 3],
+                blur: 14,
+                spread: 0,
+                color: if p.dark {
+                    p.accent.gamma_multiply(0.09 + hover * 0.06)
+                } else {
+                    Color32::from_black_alpha(14)
+                },
+            }
+            .as_shape(rect, RADIUS),
+        );
+    }
     ui.painter()
         .rect(rect, RADIUS, fill, border, egui::StrokeKind::Inside);
+    if primary {
+        ui.painter().hline(
+            rect.left() + 6.0..=rect.right() - 6.0,
+            rect.top() + 0.8,
+            egui::Stroke::new(
+                1.0_f32,
+                Color32::WHITE.gamma_multiply(if p.dark { 0.10 } else { 0.14 }),
+            ),
+        );
+    }
     ui.painter().galley(
         rect.center() - galley.size() / 2.0 + Vec2::new(0.0, press),
         galley,
@@ -383,24 +421,36 @@ pub fn modal<R>(
     width: f32,
     contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::ModalResponse<R> {
-    egui::Modal::new(egui::Id::new(id))
+    let id = egui::Id::new(id);
+    let progress = super::motion::reveal(ctx, egui::Id::new("modal-entrance"), id, 0.28);
+    let surface = super::motion::phase(progress, 0.0, 0.70);
+    let content = super::motion::phase(progress, 0.10, 1.0);
+    egui::Modal::new(id)
+        .area(egui::Modal::default_area(id).fade_in(false).anchor(
+            egui::Align2::CENTER_CENTER,
+            [0.0, 8.0 * (1.0 - super::motion::cubic_out(progress))],
+        ))
+        .backdrop_color(Color32::from_black_alpha((90.0 * surface) as u8))
         .frame(
             egui::Frame::new()
-                .fill(p.panel)
-                .stroke(egui::Stroke::new(1.0_f32, p.line))
+                .fill(p.panel.gamma_multiply(surface))
+                .stroke(egui::Stroke::new(1.0_f32, p.line.gamma_multiply(surface)))
                 .shadow(egui::Shadow {
                     offset: [0, 12],
                     blur: 40,
-                    spread: 2,
-                    color: Color32::from_black_alpha(80),
+                    spread: 0,
+                    color: Color32::from_black_alpha((90.0 * surface) as u8),
                 })
-                .corner_radius(12)
+                .corner_radius(CARD_RADIUS)
                 .inner_margin(LG),
         )
         .show(ctx, |ui| {
             ui.set_width((ctx.screen_rect().width() - 96.0).clamp(260.0, width));
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-            contents(ui)
+            // Draw disabled on the first, nearly invisible frames. Modal backdrop blocks
+            // the library immediately, while the final interactive area remains accurate.
+            ui.multiply_opacity(content);
+            ui.add_enabled_ui(content >= 0.85, contents).inner
         })
 }
 pub fn footer<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
@@ -502,7 +552,15 @@ pub fn nav_button(
         ui.is_enabled() && (response.hovered() || response.has_focus()),
     );
     if selected {
-        ui.painter().rect_filled(rect, RADIUS, p.selected);
+        ui.painter().rect_filled(rect, RADIUS, p.surface);
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(
+                rect.min + Vec2::new(0.0, 10.0),
+                Vec2::new(2.0, rect.height() - 20.0),
+            ),
+            1,
+            p.accent_text,
+        );
     } else {
         ui.painter()
             .rect_filled(rect, RADIUS, p.surface.gamma_multiply(hover));
@@ -566,7 +624,7 @@ pub fn nav_button(
         response
     }
 }
-/// Equal hit cells and a single bounded selection plate avoid overlapping pill corners.
+/// Equal hit cells; only the green underline moves. Labels and targets never move.
 pub fn segmented(
     ui: &mut egui::Ui,
     labels: &[&str],
@@ -576,11 +634,11 @@ pub fn segmented(
 ) -> (usize, Vec<egui::Rect>) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, CONTROL), egui::Sense::hover());
     let id = ui.make_persistent_id("library-filter");
-    let cell_width = (rect.width() - 2.0 * XS) / labels.len() as f32;
+    let cell_width = rect.width() / labels.len() as f32;
     let cells: Vec<_> = (0..labels.len())
         .map(|n| {
             egui::Rect::from_min_size(
-                rect.min + Vec2::new(XS + n as f32 * cell_width, 0.0),
+                rect.min + Vec2::new(n as f32 * cell_width, 0.0),
                 Vec2::new(cell_width, CONTROL),
             )
         })
@@ -605,28 +663,26 @@ pub fn segmented(
             r
         })
         .collect();
-    ui.painter().rect_filled(rect, RADIUS, p.surface);
-    let x = ui.ctx().animate_value_with_time(
-        id.with("selection-x"),
-        cells[chosen].left(),
-        ui.style().animation_time,
-    );
-    let plate = egui::Rect::from_min_size(
-        egui::pos2(x, rect.top() + XS),
-        Vec2::new(cell_width, CONTROL - 2.0 * XS),
-    )
-    .intersect(rect.shrink(XS));
-    ui.painter().rect(
-        plate,
-        RADIUS - 2,
-        if p.dark { p.raised } else { p.panel },
+    ui.painter().hline(
+        rect.x_range(),
+        rect.bottom() - 1.0,
         egui::Stroke::new(1.0_f32, p.line),
-        egui::StrokeKind::Inside,
+    );
+    let target = cells[chosen].center().x;
+    let x = super::motion::travel(ui.ctx(), id.with("underline-x"), target, 0.22);
+    let line_width = (cell_width * 0.62).min(48.0);
+    ui.painter().rect_filled(
+        egui::Rect::from_center_size(
+            egui::pos2(x, rect.bottom() - 1.5),
+            Vec2::new(line_width, 2.0),
+        ),
+        1,
+        p.accent_text,
     );
     for (n, r) in responses.into_iter().enumerate() {
         let hover = motion(ui, r.id.with("hover"), r.hovered() || r.has_focus());
         let color = if n == chosen {
-            p.text
+            p.accent_text
         } else {
             mix(p.muted, p.text, hover)
         };
@@ -639,13 +695,16 @@ pub fn segmented(
             },
             color,
         );
-        ui.painter()
-            .galley(cells[n].center() - g.size() / 2.0, g, color);
+        ui.painter().galley(
+            cells[n].center() - g.size() / 2.0 - Vec2::new(0.0, 2.0),
+            g,
+            color,
+        );
         if r.has_focus() {
             ui.painter().rect_stroke(
-                cells[n].shrink2(Vec2::new(0.0, 2.0)),
-                RADIUS - 2,
-                egui::Stroke::new(2.0_f32, p.focus),
+                cells[n].shrink2(Vec2::new(3.0, 3.0)),
+                4,
+                egui::Stroke::new(1.0_f32, p.focus),
                 egui::StrokeKind::Inside,
             );
         }
@@ -819,6 +878,40 @@ mod tests {
                 );
             }
             assert_eq!(activated, enabled);
+        }
+    }
+    #[test]
+    fn filters_use_one_accent_underline_without_a_segmented_backplate() {
+        for theme in [Theme::Cavalry, Theme::Light] {
+            let ctx = egui::Context::default();
+            crate::ui::fonts::setup(&ctx);
+            let settings = Settings {
+                theme,
+                ..Default::default()
+            };
+            apply_settings(&ctx, &settings);
+            let p = palette(&settings);
+            let mut strip = egui::Rect::NOTHING;
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let (_, cells) = segmented(ui, &["All", "Scripts", "Plugins"], 0, 240.0, p);
+                    strip = cells.iter().copied().reduce(egui::Rect::union).unwrap();
+                });
+            });
+            let mut underlines = 0;
+            for shape in output.shapes {
+                if let egui::Shape::Rect(r) = shape.shape {
+                    if strip.expand(0.01).contains_rect(r.rect) && r.fill.a() > 0 {
+                        assert!(
+                            r.rect.height() <= 2.0,
+                            "no heavy segmented selector backgrounds"
+                        );
+                        assert_eq!(r.fill, p.accent_text);
+                        underlines += 1;
+                    }
+                }
+            }
+            assert_eq!(underlines, 1);
         }
     }
     #[test]
