@@ -43,6 +43,11 @@ pub(crate) struct Audit {
     pub search: Option<egui::Rect>,
     pub filters: Vec<egui::Rect>,
     pub import_button: Option<egui::Rect>,
+    pub import_hit: Option<egui::Rect>,
+    pub import_activated: bool,
+    pub import_hover: f32,
+    pub row_actions: Vec<(egui::Rect, egui::Rect)>,
+    pub clear_search: Option<egui::Rect>,
     pub import_art: Option<egui::Rect>,
     pub navigation: Vec<egui::Rect>,
     pub settings_body: Option<egui::Rect>,
@@ -684,6 +689,7 @@ impl CavalryKitApp {
 impl eframe::App for CavalryKitApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.draw(ctx);
+        super::diagnostics::frame(ctx);
     }
 }
 impl Drop for CavalryKitApp {
@@ -1180,6 +1186,182 @@ mod tests {
                 assert_eq!(art_top[4], art_top[47]);
             } else {
                 assert!(art_top[8] != art_top[47]);
+            }
+        }
+    }
+    fn mouse_click(
+        ctx: &egui::Context,
+        app: &mut CavalryKitApp,
+        point: egui::Pos2,
+        tick: &mut f64,
+    ) {
+        for down in [None, Some(true), Some(false)] {
+            *tick += 0.04;
+            let mut events = vec![egui::Event::PointerMoved(point)];
+            if let Some(pressed) = down {
+                events.push(egui::Event::PointerButton {
+                    pos: point,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            let _ = ctx.run(
+                egui::RawInput {
+                    time: Some(*tick),
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+        }
+    }
+    #[test]
+    fn whole_import_card_and_visual_button_share_one_safe_target() {
+        let (ctx, mut app) = fixture();
+        app.paths = Some(CavalryPaths::from_base(std::path::Path::new("synthetic")));
+        let (_tx, rx) = std::sync::mpsc::channel();
+        app.picker = Some(rx); // never open a native picker in unit tests
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let hit = app.audit.import_hit.unwrap();
+        let visual = app.audit.import_button.unwrap();
+        assert!(hit.contains_rect(visual));
+        for point in [
+            hit.left_top() + egui::vec2(8.0, 8.0),
+            hit.center(),
+            visual.center(),
+            hit.right_bottom() - egui::vec2(8.0, 8.0),
+        ] {
+            mouse_click(&ctx, &mut app, point, &mut tick);
+            assert!(app.audit.import_activated, "card misses point {point:?}");
+        }
+        mouse_click(
+            &ctx,
+            &mut app,
+            egui::pos2(hit.right() + 6.0, hit.center().y),
+            &mut tick,
+        );
+        assert!(
+            !app.audit.import_activated,
+            "expanded hit zone may not cover column gap"
+        );
+    }
+    #[test]
+    fn search_icon_and_blank_padding_focus_input_but_clear_remains_separate() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let search = app.audit.search.unwrap();
+        let id = egui::Id::new("library-search");
+        for point in [
+            search.left_center() + egui::vec2(8.0, 0.0),
+            search.left_top() + egui::vec2(2.0, 2.0),
+            search.right_center() - egui::vec2(8.0, 0.0),
+        ] {
+            ctx.memory_mut(|m| m.surrender_focus(id));
+            mouse_click(&ctx, &mut app, point, &mut tick);
+            assert!(
+                ctx.memory(|m| m.has_focus(id)),
+                "visible field missed {point:?}"
+            );
+        }
+        app.search = "test".into();
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let clear = app.audit.clear_search.unwrap().center();
+        mouse_click(&ctx, &mut app, clear, &mut tick);
+        assert!(app.search.is_empty());
+        assert!(ctx.memory(|m| m.has_focus(id)));
+    }
+    #[test]
+    fn ordinary_mouse_hover_animates_the_large_card_after_reactive_idle() {
+        let (ctx, mut app) = fixture();
+        app.paths = Some(CavalryPaths::from_base(std::path::Path::new("synthetic")));
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let point = app.audit.import_hit.unwrap().center();
+        let mut values = Vec::new();
+        for time in [tick + 10.0, tick + 10.06, tick + 10.12, tick + 10.30] {
+            let _ = ctx.run(
+                egui::RawInput {
+                    time: Some(time),
+                    events: vec![egui::Event::PointerMoved(point)],
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+            values.push(app.audit.import_hover);
+        }
+        assert!(values[0] < 0.1);
+        assert!(values[1] > 0.0 && values[1] < 1.0);
+        assert_eq!(values[3], 1.0);
+    }
+    #[test]
+    fn whole_import_card_is_one_keyboard_target_and_unavailable_card_cannot_activate() {
+        for available in [true, false] {
+            let (ctx, mut app) = fixture();
+            if available {
+                app.paths = Some(CavalryPaths::from_base(std::path::Path::new("synthetic")));
+            }
+            let (_tx, rx) = std::sync::mpsc::channel();
+            app.picker = Some(rx);
+            let mut tick = 0.0;
+            settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+            let id = egui::Id::new("import-card");
+            ctx.memory_mut(|m| m.request_focus(id));
+            let _ = render(&ctx, &mut app, [900.0, 620.0], tick + 1.0);
+            let _ = ctx.run(
+                egui::RawInput {
+                    time: Some(tick + 1.02),
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    events: vec![egui::Event::Key {
+                        key: egui::Key::Enter,
+                        physical_key: Some(egui::Key::Enter),
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+            assert_eq!(app.audit.import_activated, available);
+        }
+    }
+    #[test]
+    fn row_action_targets_meet_size_and_danger_spacing_in_all_languages() {
+        let (ctx, mut app) = fixture();
+        app.library.scripts.push(crate::library::ScriptEntry {
+            name: "Example.js".into(),
+            search_key: "example.js".into(),
+            path: "synthetic/Example.js".into(),
+            group: None,
+        });
+        let mut tick = 0.0;
+        for language in Language::ALL {
+            app.settings.language = language;
+            settle(&ctx, &mut app, [720.0, 496.0], &mut tick);
+            assert!(!app.audit.row_actions.is_empty());
+            for (show, remove) in &app.audit.row_actions {
+                for rect in [show, remove] {
+                    assert!(rect.width() >= 40.0 && rect.height() >= 40.0);
+                    assert!(app.audit.library.unwrap().contains_rect(*rect));
+                }
+                assert!(
+                    show.right() + t::MD - 0.5 <= remove.left(),
+                    "unsafe overlapping/adjacent targets"
+                );
             }
         }
     }

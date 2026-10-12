@@ -180,7 +180,7 @@ impl CavalryKitApp {
                                             hint(ui, lang.tr(K::ContrastHint), p);
                                             ui.add_space(t::SM);
                                         }
-                                        t::checkbox(
+                                        t::toggle_row(
                                             ui,
                                             &mut draft.reduce_motion,
                                             lang.tr(K::MotionLabel),
@@ -215,7 +215,7 @@ impl CavalryKitApp {
                                                 }
                                             });
                                         ui.add_space(t::MD);
-                                        t::checkbox(
+                                        t::toggle_row(
                                             ui,
                                             &mut draft.refresh_on_focus,
                                             lang.tr(K::RefreshFocus),

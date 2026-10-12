@@ -12,14 +12,7 @@ Cavalry 风格深灰界面，支持 **简体中文 / English / 日本語 / 한�
 
 </details>
 
-<details>
-<summary>查看实际组件动效预览（合成数据，8秒）</summary>
-
-![CavalryKit 交互预览](assets/screenshots/motion.gif)
-
-固定输入演示：按钮悬停 → 文件拖入反馈 → 类型筛选 → 设置入场与分类 → 浅色预览 → 取消恢复。不是Windows原生录像。
-
-</details>
+动效以**原生鼠标、键盘和拖放**触发为准；合成连续帧只用于设计回归，不作为真机表现的证明。可复现的诊断步骤见 `packaging/VALIDATION.md`。
 
 ## 下载与升级
 
@@ -41,7 +34,8 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 - **大型库性能**：缓存搜索索引、只绘制可见条目、长名称一次截断排版；结果分页以限制单帧工作量。
 - **保留熟悉布局**：左侧拖入与目录入口，右侧列表顶部放置「全部 / 脚本 / 插件」和搜索；移除重复标题，保留克制的灰阶与绿色。
 - **统一元素材质**：蓝灰深色层次、白色浅色卡片、紧凑绿色主按钮、下划线筛选和低干扰搜索；去掉大壳体边框及逐行分隔线。
-- **分阶段动效**：筛选指示线平滑移动，内容短暂显现，拖入图标轻微回弹，弹窗表面先入场、内容随后出现。固定操作目标，减少动效立即切换，空闲不循环重绘。
+- **明确热区**：整块导入卡片可点击，搜索图标/留白可聚焦输入；设置开关整行可点，普通动作40pt、搜索44pt、开关行48pt起，显示/卸载之间16pt隔离。
+- **分阶段动效**：筛选指示线平滑移动，内容短暂显现，普通悬停和文件拖入分别给出卡片/图标反馈，弹窗表面先入场、内容随后出现。固定操作目标，减少动效立即切换，空闲不循环重绘。
 - **区域字体**：Roboto 拉丁字形 + 按语言选择的 Noto-derived SC / JP / KR，内嵌 Regular / Medium 两种字重，避免用日文字形替代简体中文 UI。
 - **一致的界面**：右对齐弹窗操作、4/8/16/24pt 基础间距、标题同行状态、明确的取消入口、可见滚动条和键盘焦点。
 - **安全安装**：同名内容先询问；覆盖前暂存，失败保留/恢复旧内容；同批重名、重复保留两者和重新导入自身均有回归测试。
@@ -127,7 +121,7 @@ Drop scripts, plugin folders or supported archives into the window. Resolve name
 
 The interface keeps the left-hand import area and right-hand list filters. Unified blue-charcoal/white surfaces, compact green actions, underline tabs and quiet row cards replace large bordered shells. Four settings pages retain preview/cancel. Search reads “Search plugins or scripts by name”. Roboto is paired with region-specific SC/JP/KR UI subsets at regular/medium weights.
 
-Finite motion coordinates the moving filter indicator, content reveal, a small decorative drop-target settle and staged modal entrance. Interrupting a transition starts from its current state; reduced motion reaches the final state immediately. The modal blocks background clicks from its first frame.
+The full import card is one keyboard-accessible target. Search decorations focus the input; full-row switches and spaced row actions reduce dead zones. Native pointer hover is distinct from file drag. Finite motion coordinates the moving filter indicator, content reveal, decorative feedback and staged modal entrance. Interrupting a transition starts from its current state; reduced motion reaches the final state immediately. The modal blocks background clicks from its first frame.
 
 Settings include language, color scheme, custom accent/background, 90–125% scale, reduced motion, refresh-on-focus and restart-prompt policy. Changes preview immediately; Cancel reverts them, Save persists them locally. Conflicts and removal confirmations remain mandatory safety controls. Imported scripts are not executed or uploaded.
 

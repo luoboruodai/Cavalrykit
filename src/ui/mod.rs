@@ -9,3 +9,5 @@ pub mod settings_panel;
 pub mod theme;
 
 pub(crate) mod motion;
+
+pub(crate) mod diagnostics;

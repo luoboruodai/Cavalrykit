@@ -3,6 +3,11 @@
 ## 0.1.1 — 2026-10-12
 
 ### UI and settings / 界面与设置
+- Make the entire left import card a single actionable target with ordinary pointer feedback; file-drag feedback is a separate state.
+- Focus search from its icon/padding, keep clear separate, use full-row animated switches and isolate removal targets from safe actions.
+- Increase action/search/switch-row targets to 40/44/48 logical units; add edge-click, keyboard, long-idle hover and overlap regressions.
+- Add explicit, bounded native trace-only diagnostics and optional window-frame capture; remove the old public synthetic GIF as native verification evidence.
+
 - Restore the familiar left import area and right-hand list filters/search; remove duplicate library headings, navigation captions and the permanent policy footer.
 - Apply a unified blue-charcoal / white surface system, compact green actions with restrained depth, underline filters, quiet search and borderless row cards.
 - Replace the generic bordered-panel look while keeping the agreed layout and readable light/dark states.
@@ -34,7 +39,7 @@
 - Present all import results in a bounded modal dialog; keep the main layout stable.
 - Clip independent columns and bound long labels/details; support small windows.
 - Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
-- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 8.
+- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 9.
 - Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
 

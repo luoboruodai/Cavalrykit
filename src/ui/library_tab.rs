@@ -211,7 +211,7 @@ impl CavalryKitApp {
                                                 .x
                                                 + 32.0)
                                                 .max(64.0);
-                                            let actions = reveal_width + t::CONTROL + t::SM;
+                                            let actions = reveal_width + t::CONTROL + t::MD;
                                             let x = rect.left() + 56.0;
                                             let width =
                                                 (rect.width() - 56.0 - actions - 2.0 * t::SM)
@@ -260,32 +260,32 @@ impl CavalryKitApp {
                                                         egui::Align::Center,
                                                     )),
                                             );
+                                            child.spacing_mut().item_spacing.x = t::MD;
                                             child.multiply_opacity(reveal);
                                             if reveal < 0.85 {
                                                 child.disable();
                                             }
-                                            if t::icon_button(
+                                            let remove = t::icon_button(
                                                 &mut child,
                                                 &format!("{} · {name}", lang.tr(K::Uninstall)),
                                                 Icon::Trash,
                                                 true,
                                                 p,
-                                            )
-                                            .clicked()
-                                            {
+                                            );
+                                            if remove.clicked() {
                                                 self.confirm_uninstall = Some(path.clone());
                                             }
-                                            if t::button(
+                                            let show = t::button(
                                                 &mut child,
                                                 lang.tr(K::Reveal),
                                                 t::Button::Quiet,
                                                 p,
                                             )
-                                            .on_hover_text(lang.tr(K::RevealHint))
-                                            .clicked()
-                                            {
+                                            .on_hover_text(lang.tr(K::RevealHint));
+                                            if show.clicked() {
                                                 paths::reveal_in_file_manager(path);
                                             }
+                                            self.audit.row_actions.push((show.rect, remove.rect));
                                         });
                                     });
                                 }
@@ -298,11 +298,24 @@ impl CavalryKitApp {
     fn search_box(&mut self, ui: &mut egui::Ui) {
         let p = self.p();
         let lang = self.prefs().language;
-        let (rect, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), egui::Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), t::SEARCH_HEIGHT),
+            egui::Sense::hover(),
+        );
         self.audit.search = Some(rect);
         ui.painter().rect_filled(rect, t::RADIUS, p.panel);
         let id = egui::Id::new("library-search");
+        let clear_width = if self.search.is_empty() {
+            0.0
+        } else {
+            t::CONTROL
+        };
+        let focus_rect = Rect::from_min_max(rect.min, rect.max - Vec2::new(clear_width, 0.0));
+        let background = ui.interact(focus_rect, id.with("whole-field"), egui::Sense::click());
+        if background.clicked() {
+            ui.memory_mut(|m| m.request_focus(id));
+        }
+        background.on_hover_cursor(egui::CursorIcon::Text);
         let focused = ui.memory(|m| m.has_focus(id));
         ui.painter().rect_stroke(
             rect,
@@ -321,7 +334,7 @@ impl CavalryKitApp {
         );
         let text_rect = Rect::from_min_max(
             rect.min + Vec2::new(40.0, 4.0),
-            rect.max - Vec2::new(40.0, 4.0),
+            rect.max - Vec2::new(clear_width.max(t::SM), 4.0),
         );
         let edit = ui
             .put(
@@ -344,6 +357,9 @@ impl CavalryKitApp {
             Vec2::splat(t::CONTROL),
         );
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(clear_rect));
+        if !self.search.is_empty() {
+            self.audit.clear_search = Some(clear_rect);
+        }
         if !self.search.is_empty()
             && t::icon_button(&mut child, lang.tr(K::ClearSearch), Icon::Close, false, p).clicked()
         {

@@ -5,7 +5,8 @@ pub const XS: f32 = 4.0;
 pub const SM: f32 = 8.0;
 pub const MD: f32 = 16.0;
 pub const LG: f32 = 24.0;
-pub const CONTROL: f32 = 36.0;
+pub const CONTROL: f32 = 40.0;
+pub const SEARCH_HEIGHT: f32 = 44.0;
 pub const ROW: f32 = 64.0;
 pub const HEADER: f32 = 56.0;
 pub const RADIUS: u8 = 6;
@@ -73,7 +74,7 @@ fn readable(c: Color32, bg: Color32, ratio: f32) -> Color32 {
 }
 pub fn palette(s: &Settings) -> Palette {
     let (bg, accent) = match s.theme {
-        Theme::Cavalry => (rgb([19, 23, 31]), rgb([7, 132, 48])),
+        Theme::Cavalry => (rgb([21, 24, 30]), rgb([7, 132, 48])),
         Theme::Light => (rgb([243, 245, 248]), rgb([17, 121, 61])),
         Theme::Custom => (rgb(s.background), rgb(s.accent)),
     };
@@ -92,9 +93,9 @@ pub fn palette(s: &Settings) -> Palette {
     // not a darkened version of the canvas. Custom colors retain contrast-safe surfaces.
     let (panel, surface, raised, selected) = match s.theme {
         Theme::Cavalry => (
-            rgb([26, 31, 41]),
-            rgb([33, 39, 51]),
-            rgb([41, 49, 62]),
+            rgb([29, 33, 41]),
+            rgb([38, 43, 52]),
+            rgb([48, 55, 66]),
             rgb([24, 48, 34]),
         ),
         Theme::Light => (
@@ -291,13 +292,19 @@ pub enum Button {
 /// Finite state animation; no idle timers or layout transforms. All custom controls
 /// use the same reduced-motion setting as stock egui widgets.
 pub fn motion(ui: &egui::Ui, id: egui::Id, active: bool) -> f32 {
-    ui.ctx().animate_bool_with_time_and_easing(
+    // Retarget from the painted state instead of consuming a stale reactive-mode delta.
+    // Ordinary pointer hover and file drag are deliberately separate state channels.
+    let value = super::motion::travel(ui.ctx(), id, if active { 1.0 } else { 0.0 }, 0.24);
+    super::diagnostics::sample(
+        ui.ctx(),
+        "control",
         id,
-        active,
-        ui.style().animation_time,
-        egui::emath::easing::cubic_out,
-    )
+        if active { 1.0 } else { 0.0 },
+        value,
+    );
+    value
 }
+
 pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui::Response {
     let primary = matches!(kind, Button::Primary);
     let danger = matches!(kind, Button::Danger | Button::QuietDanger);
@@ -407,6 +414,58 @@ pub fn checkbox(ui: &mut egui::Ui, value: &mut bool, label: &str, p: Palette) ->
         ui.checkbox(value, label)
     })
     .inner
+}
+/// A switch row has one full-row target; the label and the visual track share it.
+pub fn toggle_row(ui: &mut egui::Ui, value: &mut bool, label: &str, p: Palette) -> egui::Response {
+    let width = ui.available_width();
+    let g = ui
+        .painter()
+        .layout(label.into(), font(14.0), p.text, (width - 64.0).max(48.0));
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(width, (g.size().y + 2.0 * SM).max(48.0)),
+        egui::Sense::click(),
+    );
+    if response.clicked() {
+        *value = !*value;
+    }
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *value, label)
+    });
+    let hover = motion(
+        ui,
+        response.id.with("row-hover"),
+        response.hovered() || response.has_focus(),
+    );
+    ui.painter()
+        .rect_filled(rect, RADIUS, mix(p.panel, p.surface, hover));
+    let ink = rect.left_center() + Vec2::new(SM, -g.size().y / 2.0);
+    ui.painter().galley(ink, g, p.text);
+    let track = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - 26.0, rect.center().y),
+        Vec2::new(36.0, 20.0),
+    );
+    let amount = motion(ui, response.id.with("toggle"), *value);
+    ui.painter().rect(
+        track,
+        10,
+        mix(p.raised, p.accent, amount),
+        egui::Stroke::new(1.0_f32, if *value { p.accent } else { p.border }),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().circle_filled(
+        egui::pos2(track.left() + 10.0 + 16.0 * amount, track.center().y),
+        7.0,
+        if *value { p.on_accent } else { p.text },
+    );
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect,
+            RADIUS,
+            egui::Stroke::new(2.0_f32, p.focus),
+            egui::StrokeKind::Inside,
+        );
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 pub fn card(p: Palette) -> egui::Frame {
     egui::Frame::new()
@@ -912,6 +971,51 @@ mod tests {
                 }
             }
             assert_eq!(underlines, 1);
+        }
+    }
+    #[test]
+    fn switch_label_and_track_click_toggle_the_same_state_once() {
+        for right in [false, true] {
+            let ctx = egui::Context::default();
+            crate::ui::fonts::setup(&ctx);
+            apply(&ctx);
+            let p = palette(&Settings::default());
+            let mut value = false;
+            let mut rect = egui::Rect::NOTHING;
+            for frame in 0..6 {
+                let mut events = Vec::new();
+                if frame >= 3 {
+                    let point = if right {
+                        rect.right_center() - Vec2::new(18.0, 0.0)
+                    } else {
+                        rect.left_center() + Vec2::new(16.0, 0.0)
+                    };
+                    events.push(egui::Event::PointerMoved(point));
+                    if frame == 4 || frame == 5 {
+                        events.push(egui::Event::PointerButton {
+                            pos: point,
+                            button: egui::PointerButton::Primary,
+                            pressed: frame == 4,
+                            modifiers: egui::Modifiers::NONE,
+                        });
+                    }
+                }
+                let _ = ctx.run(
+                    egui::RawInput {
+                        time: Some(frame as f64 / 60.0),
+                        events,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            ui.set_width(280.0);
+                            rect = toggle_row(ui, &mut value, "Reduce motion", p).rect;
+                        });
+                    },
+                );
+            }
+            assert!(value);
+            assert!(rect.height() >= 48.0);
         }
     }
     #[test]

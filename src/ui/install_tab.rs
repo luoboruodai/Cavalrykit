@@ -132,49 +132,83 @@ impl CavalryKitApp {
             Vec2::new(ui.available_width(), height),
             egui::Sense::hover(),
         );
-        self.audit.install = Some(rect);
-        let dragging = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
-        let drag_linear = ui.ctx().animate_bool_with_time(
-            egui::Id::new("import-drag"),
-            dragging,
-            if self.prefs().reduce_motion {
-                0.0
+        let available = self.paths.is_some();
+        let response = ui.interact(
+            rect,
+            egui::Id::new("import-card"),
+            if available {
+                egui::Sense::click()
             } else {
-                0.34
+                egui::Sense::hover()
             },
         );
-        let drag = super::motion::cubic_out(drag_linear);
-        let fill = t::mix(p.panel, p.selected, drag * 0.55);
-        let border = p.focus.gamma_multiply(drag * 0.8);
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                ui.is_enabled() && available,
+                lang.tr(K::ChooseFiles),
+            )
+        });
+        let hover = t::motion(
+            ui,
+            response.id.with("hover"),
+            ui.is_enabled() && available && (response.hovered() || response.has_focus()),
+        );
+        let press = t::motion(
+            ui,
+            response.id.with("press"),
+            response.is_pointer_button_down_on(),
+        );
+        let dragging = ui.ctx().input(|i| !i.raw.hovered_files.is_empty());
+        let drag = super::motion::travel(
+            ui.ctx(),
+            response.id.with("file-drag"),
+            if dragging { 1.0 } else { 0.0 },
+            0.32,
+        );
+        self.audit.install = Some(rect);
+        self.audit.import_hit = Some(response.rect);
+        self.audit.import_hover = hover;
+        super::diagnostics::sample(
+            ui.ctx(),
+            "import-hover",
+            response.id,
+            if response.hovered() || response.has_focus() {
+                1.0
+            } else {
+                0.0
+            },
+            hover,
+        );
+        let active = hover.max(drag);
+        let surface = t::mix(p.panel, p.surface, hover * 0.75);
+        let fill = t::mix(surface, p.selected, drag * 0.55);
+        let border = t::mix(p.line, p.focus, active * 0.75);
         ui.painter().rect(
             rect,
             t::CARD_RADIUS,
             fill,
-            Stroke::new(drag, border),
+            Stroke::new(
+                if response.has_focus() {
+                    2.0_f32
+                } else {
+                    1.0_f32
+                },
+                border,
+            ),
             egui::StrokeKind::Inside,
         );
-        let inner = rect.shrink(t::MD);
-        // Quiet corner marks give the drop area a shape without another full border.
-        let zone = Rect::from_min_max(
-            inner.min + Vec2::new(0.0, 8.0),
-            Pos2::new(inner.right(), rect.bottom() - 112.0),
-        );
-        let corner_color = t::mix(p.line, p.accent_text, drag * 0.7);
-        for (corner, dx, dy) in [
-            (zone.left_top(), 1.0, 1.0),
-            (zone.right_top(), -1.0, 1.0),
-            (zone.left_bottom(), 1.0, -1.0),
-            (zone.right_bottom(), -1.0, -1.0),
-        ] {
-            ui.painter().line_segment(
-                [corner + Vec2::new(0.0, 12.0 * dy), corner],
-                Stroke::new(1.0_f32, corner_color),
-            );
-            ui.painter().line_segment(
-                [corner, corner + Vec2::new(12.0 * dx, 0.0)],
-                Stroke::new(1.0_f32, corner_color),
+        if active > 0.0 {
+            ui.painter().rect_filled(
+                Rect::from_min_size(
+                    rect.min + Vec2::new(0.0, t::MD),
+                    Vec2::new(3.0, rect.height() - 2.0 * t::MD),
+                ),
+                1,
+                p.accent_text.gamma_multiply(active),
             );
         }
+        let inner = rect.shrink(t::MD);
         let status = if let Some(key) = self.busy {
             lang.tr(key).to_owned()
         } else if !self.conflicts.is_empty() {
@@ -188,13 +222,8 @@ impl CavalryKitApp {
         } else {
             lang.tr(K::DropHint).to_owned()
         };
-        let hint_color = if self.busy.is_some() {
-            p.accent_text
-        } else {
-            p.muted
-        };
         let mut hint_job =
-            egui::text::LayoutJob::simple(status.clone(), t::font(11.0), hint_color, inner.width());
+            egui::text::LayoutJob::simple(status.clone(), t::font(11.0), p.muted, inner.width());
         hint_job.halign = egui::Align::Center;
         let hint = ui.painter().layout_job(hint_job);
         let hint_rect = Rect::from_min_size(
@@ -204,44 +233,14 @@ impl CavalryKitApp {
         ui.painter().galley(
             Pos2::new(hint_rect.center().x, hint_rect.top()),
             hint,
-            hint_color,
+            p.muted,
         );
-        ui.interact(
-            hint_rect,
-            egui::Id::new("import-status"),
-            egui::Sense::hover(),
-        )
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &status));
         self.audit.install_hint = Some(hint_rect);
-        let button_rect = Rect::from_min_size(
-            Pos2::new(inner.left(), hint_rect.top() - t::SM - t::CONTROL),
-            Vec2::new(inner.width(), t::CONTROL),
-        );
-        let mut button_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt("import-picker")
-                .max_rect(button_rect)
-                .layout(egui::Layout::top_down(egui::Align::Center)),
-        );
-        let r = button_ui
-            .add_enabled_ui(self.paths.is_some(), |ui| {
-                t::button(ui, lang.tr(K::ChooseFiles), t::Button::Primary, p)
-            })
-            .inner;
-        self.audit.import_button = Some(r.rect);
-        if r.clicked() {
-            self.pick_files(ui.ctx());
-        }
-        // Center only the decorative content, never the click target or text slots.
-        let content = Rect::from_min_max(
-            inner.min,
-            Pos2::new(inner.right(), button_rect.top() - t::MD),
-        );
-        let compact = height < 300.0;
-        let tile_size = if compact { 32.0 } else { 56.0 };
+        ui.interact(hint_rect, response.id.with("status"), egui::Sense::hover())
+            .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &status));
         let mut title_job = egui::text::LayoutJob::simple(
             lang.tr(K::DropTitle).into(),
-            t::medium(13.0),
+            t::medium(14.0),
             p.text,
             inner.width(),
         );
@@ -250,60 +249,90 @@ impl CavalryKitApp {
         let formats =
             ui.painter()
                 .layout_no_wrap("JS · JSX · JSC · ZIP · 7z".into(), t::font(11.0), p.muted);
-        let stack_h = tile_size + t::MD + title.size().y + t::SM + formats.size().y;
-        let y = content.top() + ((content.height() - stack_h) / 2.0).max(0.0);
-        let spring = super::motion::settle(drag_linear);
+        let tile_size = if height < 300.0 { 32.0 } else { 52.0 };
+        let icon_gap = if height < 300.0 { t::SM } else { t::MD };
+        let stack_h =
+            tile_size + icon_gap + title.size().y + t::SM + formats.size().y + t::LG + t::CONTROL;
+        let stack_top =
+            inner.top() + ((hint_rect.top() - t::MD - inner.top() - stack_h) / 2.0).max(0.0);
+        let spring = super::motion::settle(active);
         let tile = Rect::from_center_size(
-            Pos2::new(content.center().x, y + tile_size / 2.0 - 5.0 * spring),
-            Vec2::splat(tile_size + 4.0 * drag),
+            Pos2::new(
+                inner.center().x,
+                stack_top + tile_size / 2.0 - 4.0 * spring + press,
+            ),
+            Vec2::splat(tile_size),
         );
-        let tile_radius = (14.0 - 6.0 * drag).round() as u8;
-        if drag > 0.0 {
-            ui.painter().add(
-                egui::Shadow {
-                    offset: [0, 4],
-                    blur: 24,
-                    spread: 0,
-                    color: p.accent.gamma_multiply(0.10 * drag),
-                }
-                .as_shape(tile, tile_radius),
-            );
-        }
         ui.painter()
-            .rect_filled(tile, tile_radius, t::mix(p.surface, p.selected, drag));
+            .rect_filled(tile, 12, t::mix(p.surface, p.selected, active));
         icons::paint(
             ui.painter(),
             Rect::from_center_size(
                 tile.center(),
-                Vec2::splat(if compact { 20.0 } else { 26.0 }),
+                Vec2::splat(if height < 300.0 { 20.0 } else { 28.0 }),
             ),
             Icon::Import,
-            t::mix(p.muted, p.accent_text, 0.5 + 0.5 * drag),
+            t::mix(p.muted, p.accent_text, active),
         );
-        // A brief expanding ring follows the initial pickup, then disappears at rest.
-        let pulse = (std::f32::consts::PI * drag_linear).sin().max(0.0);
-        if pulse > 0.01 {
-            ui.painter().circle_stroke(
-                tile.center(),
-                tile.width() / 2.0 + 6.0 * drag,
-                Stroke::new(1.0_f32, p.accent_text.gamma_multiply(0.20 * pulse)),
-            );
-        }
-        let title_y = y + tile_size + t::MD;
+        let title_y = stack_top + tile_size + icon_gap;
         let title_h = title.size().y;
-        self.audit.import_art = Some(Rect::from_min_max(
-            Pos2::new(inner.left(), tile.top()),
-            Pos2::new(inner.right(), title_y + title_h + t::SM + formats.size().y),
-        ));
+        let format_h = formats.size().y;
         ui.painter()
-            .galley(Pos2::new(content.center().x, title_y), title, p.text);
+            .galley(Pos2::new(inner.center().x, title_y), title, p.text);
         ui.painter().galley(
             Pos2::new(
-                content.center().x - formats.size().x / 2.0,
+                inner.center().x - formats.size().x / 2.0,
                 title_y + title_h + t::SM,
             ),
             formats,
             p.muted,
         );
+        self.audit.import_art = Some(Rect::from_min_max(
+            Pos2::new(inner.left(), tile.top()),
+            Pos2::new(inner.right(), title_y + title_h + t::SM + format_h),
+        ));
+        // This visual CTA and all surrounding card space intentionally share ONE response.
+        // There is no nested button that could consume or duplicate the click.
+        let label = ui.painter().layout_no_wrap(
+            lang.tr(K::ChooseFiles).into(),
+            t::medium(14.0),
+            p.on_accent,
+        );
+        let button = Rect::from_center_size(
+            Pos2::new(
+                inner.center().x,
+                title_y + title_h + t::SM + format_h + t::LG + t::CONTROL / 2.0,
+            ),
+            Vec2::new(
+                (label.size().x + 2.0 * t::LG).min(inner.width()),
+                t::CONTROL,
+            ),
+        );
+        self.audit.import_button = Some(button);
+        ui.painter().rect_filled(
+            button,
+            t::RADIUS,
+            t::mix(
+                p.accent,
+                if p.on_accent == egui::Color32::WHITE {
+                    egui::Color32::BLACK
+                } else {
+                    egui::Color32::WHITE
+                },
+                active * 0.08 + press * 0.08,
+            ),
+        );
+        ui.painter().galley(
+            button.center() - label.size() / 2.0 + Vec2::new(0.0, press),
+            label,
+            p.on_accent,
+        );
+        if response.clicked() && available {
+            self.audit.import_activated = true;
+            self.pick_files(ui.ctx());
+        }
+        if available {
+            response.on_hover_cursor(egui::CursorIcon::PointingHand);
+        }
     }
 }

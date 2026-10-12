@@ -37,6 +37,7 @@ pub fn reveal(ctx: &Context, slot: Id, key: Id, seconds: f32) -> f32 {
     if progress < 1.0 {
         ctx.request_repaint();
     }
+    super::diagnostics::sample(ctx, "reveal", slot, 1.0, progress);
     progress
 }
 #[derive(Clone, Copy)]
@@ -79,7 +80,9 @@ pub fn travel(ctx: &Context, id: Id, target: f32, seconds: f32) -> f32 {
     if state.from != state.to && now - state.started < seconds as f64 {
         ctx.request_repaint();
     }
-    sample(state)
+    let value = sample(state);
+    super::diagnostics::sample(ctx, "travel", id, target, value);
+    value
 }
 pub fn cubic_out(t: f32) -> f32 {
     1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
