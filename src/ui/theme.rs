@@ -637,8 +637,18 @@ pub fn modal<R>(
     width: f32,
     contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::ModalResponse<R> {
+    modal_state(ctx, id, p, width, false, contents)
+}
+pub fn modal_state<R>(
+    ctx: &egui::Context,
+    id: &str,
+    p: Palette,
+    width: f32,
+    closing: bool,
+    contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::ModalResponse<R> {
     let id = egui::Id::new(id);
-    let progress = super::motion::reveal(ctx, egui::Id::new("modal-entrance"), id, 0.28);
+    let progress = super::motion::modal_progress(ctx, id, closing, 0.28);
     let surface = super::motion::phase(progress, 0.0, 0.70);
     let content = super::motion::phase(progress, 0.10, 1.0);
     egui::Modal::new(id)
@@ -663,12 +673,12 @@ pub fn modal<R>(
         .show(ctx, |ui| {
             ui.set_width((ctx.screen_rect().width() - 96.0).clamp(260.0, width));
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-            // Draw disabled on the first, nearly invisible frames. Modal backdrop blocks
-            // the library immediately, while the final interactive area remains accurate.
             ui.multiply_opacity(content);
-            ui.add_enabled_ui(content >= 0.85, contents).inner
+            ui.add_enabled_ui(!closing && content >= 0.85, contents)
+                .inner
         })
 }
+
 pub fn footer<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
     ui.add_space(MD);
     ui.allocate_ui_with_layout(

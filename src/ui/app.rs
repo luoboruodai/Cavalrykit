@@ -84,6 +84,7 @@ pub struct CavalryKitApp {
     pub(crate) settings: Settings,
     pub(crate) settings_draft: Option<Settings>,
     pub(crate) settings_section: super::settings_panel::Section,
+    pub(crate) settings_closing: bool,
     settings_path: Option<PathBuf>,
     pub(crate) settings_error: Option<String>,
     applied_style: Option<Settings>,
@@ -154,6 +155,7 @@ impl CavalryKitApp {
             settings: Settings::default(),
             settings_draft: None,
             settings_section: super::settings_panel::Section::General,
+            settings_closing: false,
             settings_path: None,
             settings_error: None,
             applied_style: None,
@@ -184,7 +186,7 @@ impl CavalryKitApp {
     pub(crate) fn p(&self) -> t::Palette {
         t::palette(self.prefs())
     }
-    fn apply_style(&mut self, ctx: &egui::Context) {
+    pub(crate) fn apply_style(&mut self, ctx: &egui::Context) {
         let settings = self.prefs().clone();
         if self.applied_style.as_ref() != Some(&settings) {
             if self.applied_style.as_ref().map(|s| s.language) != Some(settings.language) {
@@ -328,15 +330,18 @@ impl CavalryKitApp {
         }
         if self.settings_draft.is_none() {
             self.settings_draft = Some(self.settings.clone());
+            self.settings_closing = false;
             self.settings_section = super::settings_panel::Section::General;
             self.settings_error = None;
         }
     }
     pub(crate) fn cancel_settings(&mut self, ctx: &egui::Context) {
-        if self.busy != Some(K::SaveBusy) {
-            self.settings_draft = None;
+        if self.busy != Some(K::SaveBusy) && self.settings_draft.is_some() {
+            self.settings_draft = Some(self.settings.clone());
             self.settings_error = None;
+            self.settings_closing = true;
             self.apply_style(ctx);
+            ctx.set_zoom_factor(self.settings.scale_percent as f32 / 100.0);
         }
     }
     pub(crate) fn save_settings(&mut self) {
@@ -347,8 +352,9 @@ impl CavalryKitApp {
             if let Some(path) = self.settings_path.clone() {
                 self.submit(Job::SaveSettings(path, draft), K::SaveBusy);
             } else if self.paths.is_none() {
-                self.settings = draft;
-                self.settings_draft = None;
+                self.settings = draft.clone();
+                self.settings_draft = Some(draft);
+                self.settings_closing = true;
                 self.push_toast(self.tr(K::SettingsSaved));
             } else {
                 self.settings_error = Some(self.tr(K::DirectoriesUnavailable).into());
@@ -417,7 +423,9 @@ impl CavalryKitApp {
                     match result {
                         Ok(()) => {
                             if let Some(s) = self.settings_draft.take() {
-                                self.settings = s;
+                                self.settings = s.clone();
+                                self.settings_draft = Some(s);
+                                self.settings_closing = true;
                             }
                             self.settings_error = None;
                             self.push_toast(self.tr(K::SettingsSaved));
@@ -1524,6 +1532,8 @@ mod tests {
                         .contains_rect(dialog));
                 }
                 app.cancel_settings(&ctx);
+                settle(&ctx, &mut app, size, &mut tick);
+                assert!(app.settings_draft.is_none());
             }
         }
     }
@@ -1639,6 +1649,8 @@ mod tests {
         assert_eq!(app.tr(K::Settings), Language::Ko.tr(K::Settings));
         assert_eq!(app.settings, original);
         app.cancel_settings(&ctx);
+        let mut close_tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut close_tick);
         assert_eq!(app.settings, original);
         assert!(app.settings_draft.is_none());
         assert_eq!(ctx.zoom_factor(), 1.0);
@@ -1779,6 +1791,7 @@ mod tests {
             },
             |ctx| app.draw(ctx),
         );
+        settle(&ctx, &mut app, [1120.0, 760.0], &mut tick);
         assert!(app.settings_draft.is_none());
         assert_eq!(app.settings.language, Language::Zh);
         app.restart_prompt = true;

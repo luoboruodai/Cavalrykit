@@ -20,7 +20,7 @@ impl CavalryKitApp {
         let can_save = self.busy.is_none();
         let error = self.settings_error.clone();
         let (mut save, mut cancel, mut reset, mut browse) = (false, false, false, false);
-        let response = t::modal(ctx, "settings", p, 720.0, |ui| {
+        let response = t::modal_state(ctx, "settings", p, 720.0, self.settings_closing, |ui| {
             let start = ui.cursor().top();
             ui.label(t::heading(lang.tr(K::SettingsTitle), 22.0, p));
             ui.add(egui::Label::new(t::text(lang.tr(K::PreviewHint), 12.0, p.muted)).wrap());
@@ -159,6 +159,13 @@ impl CavalryKitApp {
                                             }
                                         });
                                         hint(ui, lang.tr(K::ScaleHint), p);
+                                        ui.add_space(t::MD);
+                                        t::toggle_row(
+                                            ui,
+                                            &mut draft.reduce_motion,
+                                            lang.tr(K::MotionLabel),
+                                            p,
+                                        );
                                     }
                                     Section::Appearance => {
                                         label(ui, lang.tr(K::ThemeLabel), p);
@@ -180,12 +187,6 @@ impl CavalryKitApp {
                                             hint(ui, lang.tr(K::ContrastHint), p);
                                             ui.add_space(t::SM);
                                         }
-                                        t::toggle_row(
-                                            ui,
-                                            &mut draft.reduce_motion,
-                                            lang.tr(K::MotionLabel),
-                                            p,
-                                        );
                                     }
                                     Section::Installation => {
                                         label(ui, lang.tr(K::RestartLabel), p);
@@ -292,10 +293,18 @@ impl CavalryKitApp {
             draft = Settings::default();
         }
         self.settings_draft = Some(draft);
-        if !saving && (cancel || response.should_close()) {
+        if !self.settings_closing && !saving && (cancel || response.should_close()) {
             self.cancel_settings(ctx);
-        } else if save {
+        } else if !self.settings_closing && save {
             self.save_settings();
+        }
+        if self.settings_closing
+            && super::motion::modal_progress(ctx, egui::Id::new("settings"), true, 0.28) <= 0.001
+        {
+            self.settings_draft = None;
+            self.settings_closing = false;
+            self.apply_style(ctx);
+            ctx.set_zoom_factor(self.settings.scale_percent as f32 / 100.0);
         }
     }
 }

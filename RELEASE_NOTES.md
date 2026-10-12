@@ -22,7 +22,7 @@
 - 安装覆盖暂存/回滚、同批重名冲突、递归目标/跨平台路径穿越保护。
 - 修正 macOS 图标视觉大小，完整 Retina ICNS；Windows 15 档内嵌 ICO、静态 VC++ 运行库与固定路径升级安装器。
 
-macOS 应用版本 **0.1.1 / build 10**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
+macOS 应用版本 **0.1.1 / build 12**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
 
 **验证边界**：Windows 真实 Cavalry、显卡/多屏拖窗、混合 DPI、任务栏缓存的人工验收仍延期；CI 不等价于这些体验测试。安全重启自动测试使用模拟进程，不对用户未保存工程发起退出。不能承诺所有环境绝对无 bug 或零卡顿。
 
@@ -47,6 +47,6 @@ Settings support preview/cancel, scale, reduced motion, refresh-on-focus and res
 
 Includes staged replacement/rollback, recursive-target and cross-platform archive-path safeguards, corrected macOS optical icon margins, 15 Windows ICO sizes, static VC++ runtime and an in-place per-user Windows upgrader.
 
-The workspace retains the left-hand import area and right-hand list filters/search without duplicate headings. Unified blue-charcoal/white surfaces, compact green actions, segmented filters and quiet row cards replace heavy outlines. Finite, interruptible choreography includes eased indicator travel, decorative drop settling and staged modal/content reveal; background clicks are blocked immediately and reduced motion is instant. Settings now use four focused pages and visual theme cards. Regional SC/JP/KR fonts replace the shared Japanese UI subset. macOS bundle build: 10.
+The workspace retains the left-hand import area and right-hand list filters/search without duplicate headings. Unified blue-charcoal/white surfaces, compact green actions, segmented filters and quiet row cards replace heavy outlines. Finite, interruptible choreography includes eased indicator travel, decorative drop settling and staged modal/content reveal; background clicks are blocked immediately and reduced motion is instant. Settings now use four focused pages and visual theme cards. Regional SC/JP/KR fonts replace the shared Japanese UI subset. macOS bundle build: 12.
 
 The native CI workflow is prepared but has not run remotely; it is not reported as passing. Physical Windows/Cavalry, GPU/mixed-DPI and taskbar behavior are still deferred; automated checks do not substitute for those tests. Both packages are unsigned for commercial distribution (macOS is ad-hoc signed without notarization).

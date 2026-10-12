@@ -202,7 +202,7 @@ impl CavalryKitApp {
             egui::WidgetInfo::labeled(
                 egui::WidgetType::Button,
                 ui.is_enabled() && available,
-                lang.tr(K::ChooseFiles),
+                lang.tr(K::DropTitle),
             )
         });
         let hover = t::motion(

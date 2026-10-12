@@ -84,6 +84,43 @@ pub fn travel(ctx: &Context, id: Id, target: f32, seconds: f32) -> f32 {
     super::diagnostics::sample(ctx, "travel", id, target, value);
     value
 }
+#[derive(Clone, Copy)]
+struct ModalMotion {
+    closing: bool,
+    started: f64,
+    from: f32,
+}
+pub fn modal_progress(ctx: &Context, id: Id, closing: bool, seconds: f32) -> f32 {
+    let now = ctx.input(|i| i.time);
+    let target = if closing { 0.0 } else { 1.0 };
+    let state = ctx.data_mut(|d| {
+        let key = id.with("modal-motion");
+        let mut s = d.get_temp::<ModalMotion>(key).unwrap_or(ModalMotion {
+            closing: false,
+            started: now,
+            from: 0.0,
+        });
+        if s.closing != closing {
+            let old = if s.closing { 0.0 } else { 1.0 };
+            s = ModalMotion {
+                closing,
+                started: now,
+                from: old,
+            };
+        }
+        d.insert_temp(key, s);
+        s
+    });
+    if ctx.style().animation_time == 0.0 {
+        return target;
+    }
+    let k = cubic_out(((now - state.started) as f32 / seconds.max(0.001)).clamp(0.0, 1.0));
+    let value = state.from + (target - state.from) * k;
+    if (value - target).abs() > 0.001 {
+        ctx.request_repaint();
+    }
+    value
+}
 pub fn cubic_out(t: f32) -> f32 {
     1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
 }

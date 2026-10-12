@@ -46,7 +46,7 @@
 - Present all import results in a bounded modal dialog; keep the main layout stable.
 - Clip independent columns and bound long labels/details; support small windows.
 - Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
-- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 10.
+- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 12.
 - Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
 
