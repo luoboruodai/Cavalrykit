@@ -6,7 +6,7 @@ use crate::{
     library::Library,
     paths::CavalryPaths,
     restart::{RestartError, RestartResult},
-    settings::{self, Settings},
+    settings::{self, Language, Settings, Theme},
     worker::{Event, Job, Worker},
 };
 use std::{
@@ -19,7 +19,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Filter {
     All,
     Scripts,
@@ -29,6 +29,29 @@ pub(crate) enum Filter {
 pub(crate) enum Row {
     Script(usize),
     Plugin(usize),
+}
+/// Only visual preferences rebuild egui styles/fonts and notify the native window.
+/// Installation, refresh and Cavalry path edits must not reset an in-flight animation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StyleKey {
+    language: Language,
+    theme: Theme,
+    accent: [u8; 3],
+    background: [u8; 3],
+    scale_percent: u16,
+    reduce_motion: bool,
+}
+impl From<&Settings> for StyleKey {
+    fn from(s: &Settings) -> Self {
+        Self {
+            language: s.language,
+            theme: s.theme,
+            accent: s.accent,
+            background: s.background,
+            scale_percent: s.scale_percent,
+            reduce_motion: s.reduce_motion,
+        }
+    }
 }
 #[derive(Default)]
 pub(crate) struct Audit {
@@ -41,6 +64,7 @@ pub(crate) struct Audit {
     pub install: Option<egui::Rect>,
     pub install_hint: Option<egui::Rect>,
     pub search: Option<egui::Rect>,
+    pub search_hover: f32,
     pub refresh: Option<egui::Rect>,
     pub count: Option<egui::Rect>,
     pub count_color: Option<egui::Color32>,
@@ -79,7 +103,9 @@ pub struct CavalryKitApp {
     picker: Option<Receiver<Vec<PathBuf>>>,
     picking_app: bool,
     pub(crate) rows: Vec<Row>,
-    cached_query: Option<(String, Filter)>,
+    // (trimmed raw query, normalized query, filter); the raw copy avoids lowercasing
+    // and allocating on every frame while the search field is idle.
+    cached_query: Option<(String, String, Filter)>,
     pub(crate) logo: egui::TextureHandle,
     pub(crate) settings: Settings,
     pub(crate) settings_draft: Option<Settings>,
@@ -87,7 +113,7 @@ pub struct CavalryKitApp {
     pub(crate) settings_closing: bool,
     settings_path: Option<PathBuf>,
     pub(crate) settings_error: Option<String>,
-    applied_style: Option<Settings>,
+    applied_style: Option<StyleKey>,
     pub(crate) notice: Option<(K, Option<String>)>,
     pub(crate) restart_prompt: bool,
     pub(crate) restart_cancel: Option<Arc<AtomicBool>>,
@@ -187,13 +213,13 @@ impl CavalryKitApp {
         t::palette(self.prefs())
     }
     pub(crate) fn apply_style(&mut self, ctx: &egui::Context) {
-        let settings = self.prefs().clone();
-        if self.applied_style.as_ref() != Some(&settings) {
-            if self.applied_style.as_ref().map(|s| s.language) != Some(settings.language) {
-                super::fonts::setup_for_language(ctx, settings.language);
+        let key = StyleKey::from(self.prefs());
+        if self.applied_style != Some(key) {
+            if self.applied_style.map(|s| s.language) != Some(key.language) {
+                super::fonts::setup_for_language(ctx, key.language);
             }
-            t::apply_settings(ctx, &settings);
-            self.applied_style = Some(settings);
+            t::apply_settings(ctx, self.prefs());
+            self.applied_style = Some(key);
             ctx.request_repaint();
         }
     }
@@ -244,10 +270,13 @@ impl CavalryKitApp {
         self.cached_query = None;
     }
     pub(crate) fn update_rows(&mut self) {
-        let key = (self.search.trim().to_lowercase(), self.filter);
-        if self.cached_query.as_ref() == Some(&key) {
-            return;
+        let raw = self.search.trim();
+        if let Some((cached_raw, _, cached_filter)) = self.cached_query.as_ref() {
+            if cached_raw == raw && *cached_filter == self.filter {
+                return;
+            }
         }
+        let normalized = raw.to_lowercase();
         self.rows.clear();
         if self.filter != Filter::Plugins {
             self.rows.extend(
@@ -255,7 +284,7 @@ impl CavalryKitApp {
                     .scripts
                     .iter()
                     .enumerate()
-                    .filter(|(_, e)| e.search_key.contains(&key.0))
+                    .filter(|(_, e)| e.search_key.contains(&normalized))
                     .map(|(i, _)| Row::Script(i)),
             );
         }
@@ -265,11 +294,11 @@ impl CavalryKitApp {
                     .plugins
                     .iter()
                     .enumerate()
-                    .filter(|(_, e)| e.search_key.contains(&key.0))
+                    .filter(|(_, e)| e.search_key.contains(&normalized))
                     .map(|(i, _)| Row::Plugin(i)),
             );
         }
-        self.cached_query = Some(key);
+        self.cached_query = Some((raw.to_owned(), normalized, self.filter));
     }
     pub(crate) fn pick_files(&mut self, ctx: &egui::Context) {
         if self.picker.is_some() {
@@ -882,6 +911,22 @@ mod tests {
         installer::{TempGuard, UnitKind},
         settings::{Language, RestartPrompt, Theme},
     };
+    #[test]
+    fn nonvisual_preferences_do_not_reset_style_or_native_window_theme() {
+        let (ctx, mut app) = fixture();
+        let before = app.applied_style;
+        app.settings.refresh_on_focus = !app.settings.refresh_on_focus;
+        app.settings.restart_prompt = RestartPrompt::Never;
+        app.settings.cavalry_path = "synthetic/nonexistent/Cavalry.app".into();
+        app.apply_style(&ctx);
+        assert_eq!(app.applied_style, before);
+        let mut visual = app.settings.clone();
+        visual.reduce_motion = !visual.reduce_motion;
+        assert_ne!(StyleKey::from(&visual), before.unwrap());
+        visual = app.settings.clone();
+        visual.theme = Theme::Light;
+        assert_ne!(StyleKey::from(&visual), before.unwrap());
+    }
     fn fixture() -> (egui::Context, CavalryKitApp) {
         let ctx = egui::Context::default();
         super::super::fonts::setup(&ctx);
@@ -1050,6 +1095,28 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    fn idle_search_reuses_normalized_query_cache_until_query_or_filter_changes() {
+        let (ctx, mut app) = fixture();
+        app.library.scripts.push(crate::library::ScriptEntry {
+            name: "Example.js".into(),
+            group: None,
+            path: "synthetic/Example.js".into(),
+            search_key: "example.js".into(),
+        });
+        app.search = "  EXAMPLE  ".into();
+        app.update_rows();
+        let first = app.cached_query.clone();
+        assert_eq!(app.rows, vec![Row::Script(0)]);
+        app.search = " EXAMPLE ".into();
+        app.update_rows();
+        assert_eq!(app.cached_query, first);
+        app.filter = Filter::Plugins;
+        app.update_rows();
+        assert_ne!(app.cached_query, first);
+        assert!(app.rows.is_empty());
+        drop(ctx);
     }
     #[test]
     fn restored_filters_work_without_duplicate_library_titles_or_hover_repaint_loops() {

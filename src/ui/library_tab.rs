@@ -103,13 +103,17 @@ impl CavalryKitApp {
 
         ui.add_space(t::MD);
         let height = ui.available_height().max(48.0);
-        let reveal = super::motion::reveal(
-            ui.ctx(),
-            egui::Id::new("library-reveal"),
-            egui::Id::new(self.filter as u8),
-            0.24,
-        );
-        let reveal = super::motion::phase(reveal, 0.0, 1.0);
+        // Empty states are static; don't start a repaint loop for an animation they don't use.
+        let reveal = if self.rows.is_empty() {
+            1.0
+        } else {
+            super::motion::reveal(
+                ui.ctx(),
+                egui::Id::new("library-reveal"),
+                egui::Id::new(self.filter as u8),
+                0.42,
+            )
+        };
         if self.rows.is_empty() {
             ui.allocate_ui_with_layout(
                 Vec2::new(ui.available_width(), height),
@@ -157,7 +161,11 @@ impl CavalryKitApp {
                 .auto_shrink([false, false])
                 .max_height(height)
                 .show_rows(ui, t::ROW, self.rows.len(), |ui, range| {
-                    for index in range {
+                    // Use the stable global row index, not the viewport range, so scrolling
+                    // during the bounded reveal cannot retime an existing row or its actions.
+                    for index in range.clone() {
+                        let start = (index.min(8) as f32) * 0.045;
+                        let row_reveal = super::motion::phase(reveal, start, start + 0.62);
                         let (name, kind, meta, path) = match self.rows[index] {
                             Row::Script(i) => {
                                 let e = &self.library.scripts[i];
@@ -201,8 +209,8 @@ impl CavalryKitApp {
                                     tone.color,
                                 );
                                 let mut painter = ui.painter().clone();
-                                painter.multiply_opacity(reveal);
-                                let dy = 3.0 * (1.0 - reveal);
+                                painter.multiply_opacity(row_reveal);
+                                let dy = 3.0 * (1.0 - row_reveal);
                                 let tile = Rect::from_center_size(
                                     Pos2::new(rect.left() + 28.0, rect.center().y + dy),
                                     Vec2::splat(28.0),
@@ -261,8 +269,8 @@ impl CavalryKitApp {
                                         .layout(egui::Layout::right_to_left(egui::Align::Center)),
                                 );
                                 child.spacing_mut().item_spacing.x = t::MD;
-                                child.multiply_opacity(reveal);
-                                if reveal < 0.85 {
+                                child.multiply_opacity(row_reveal);
+                                if row_reveal < 0.85 {
                                     child.disable();
                                 }
                                 let remove = t::icon_button(
@@ -301,7 +309,6 @@ impl CavalryKitApp {
             egui::Sense::hover(),
         );
         self.audit.search = Some(rect);
-        ui.painter().rect_filled(rect, 10, p.panel);
         let id = egui::Id::new("library-search");
         let clear_width = if self.search.is_empty() {
             0.0
@@ -313,13 +320,18 @@ impl CavalryKitApp {
         if r.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
         }
+        let hovered = r.hovered();
         r.on_hover_cursor(egui::CursorIcon::Text);
         let focused = ui.memory(|m| m.has_focus(id));
-        let focus = t::motion(ui, id.with("focus-line"), focused);
+        let tone = t::category(p, self.filter == Filter::Plugins);
+        let hover = t::motion(ui, id.with("hover"), hovered || focused);
+        self.audit.search_hover = hover;
+        ui.painter()
+            .rect_filled(rect, 10, t::mix(p.panel, tone.tint, hover * 0.55));
         ui.painter().rect_stroke(
             rect,
             10,
-            Stroke::new(focus, t::category(p, self.filter == Filter::Plugins).color),
+            Stroke::new(if focused { 1.5 } else { hover }, tone.color),
             egui::StrokeKind::Inside,
         );
         icons::paint(
@@ -329,11 +341,11 @@ impl CavalryKitApp {
                 Vec2::splat(16.0),
             ),
             Icon::Search,
-            p.muted,
+            t::mix(p.muted, tone.color, hover),
         );
         let text_rect = Rect::from_min_max(
-            rect.min + Vec2::new(40.0, 4.0),
-            rect.max - Vec2::new(clear_width.max(t::SM), 4.0),
+            rect.min + Vec2::new(40.0, 0.0),
+            rect.max - Vec2::new(clear_width.max(t::SM), 0.0),
         );
         let edit = ui
             .put(
@@ -343,7 +355,7 @@ impl CavalryKitApp {
                     .hint_text(t::text(lang.tr(K::Search), 14.0, p.muted))
                     .font(t::font(14.0))
                     .frame(false)
-                    .margin(egui::Margin::symmetric(0, 5)),
+                    .margin(egui::Margin::symmetric(0, 10)),
             )
             .on_hover_text(lang.tr(K::Search));
         edit.widget_info(|| {

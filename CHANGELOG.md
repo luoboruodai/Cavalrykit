@@ -9,6 +9,7 @@
 - Match reveal/remove as two icon actions, keeping separate hit targets and safe spacing.
 - Use adaptive segmented filters and an adjacent result badge; place refresh beside search.
 - Coordinate import title/format/icon feedback; use an even drop outline without a thick left stripe.
+- Keep staged list reveals stable while scrolling, skip empty-state repaint loops, and avoid repeated idle-query normalization allocations.
 
 - Make the entire left import card a single actionable target with ordinary pointer feedback; file-drag feedback is a separate state.
 - Focus search from its icon/padding, keep clear separate, use full-row animated switches and isolate removal targets from safe actions.
@@ -46,7 +47,7 @@
 - Present all import results in a bounded modal dialog; keep the main layout stable.
 - Clip independent columns and bound long labels/details; support small windows.
 - Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
-- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 12.
+- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 13.
 - Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
 
