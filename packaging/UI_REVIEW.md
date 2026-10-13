@@ -1,4 +1,4 @@
-# CavalryKit 0.1.1 / build 18 · 图标高清化与界面一致性
+# CavalryKit 0.1.1 / build 19 · 图标视觉锚点还原
 
 本页保留 build16 的界面矩阵，Build17 增加图标资源矩阵；界面实现未重新设计。
 
@@ -50,6 +50,14 @@
 - 现象：正式包和直接读取的 ICNS 已是批准图标，但 macOS 系统应用列表仍存在旧 0.1.0/构建副本登记，并显示旧的同名图标呈现。
 - 修正：保持批准 ICNS 字节不变，仅将 `CFBundleIconFile` 改为内容寻址资源名 `CavalryKitIcon-cf28782cc147`，重新构建并从本地 build18 DMG 替换 `/Applications/CavalryKit.app`；定向更新 Launch Services 登记，清理已核对的 `dist/CavalryKit.app` 副本和不存在的旧磁盘镜像登记，不删除全局缓存。
 - 结果：正式应用列表仅保留 `/Applications/CavalryKit.app`；Spotlight 搜索 `CavalryKit` 仅显示一个条目并显示批准图标。应用重新打开后主界面品牌图标正常，Cavalry 宿主 PID、用户偏好和既有库未改变。
+
+## Build 19 A 方向视觉源还原（2026-10-14）
+
+**当前 build19 实测**：114项测试通过、1项真实用户目录写入测试ignored；正式安装ICNS解码出的1024帧与首轮A预览像素完全一致，原始Mac主图文件字节相同。
+
+- 本轮发现版本漂移而非单纯图标缓存：首轮 A 预览原始 SHA-256 `d9563abce6201f7f03a62b4442ad6ba0765426903a38519906bb2b97943ec5f2`，build18 macOS 主图为不同字节的 R1 描摹稿。虽然构图相近，但笔画/主体占比不同，不能写成“只需重装”。
+- build19 的 macOS 1024 主图与已确认 A 完全同字节；ICNS每个尺寸由它直接生成。macOS应用内使用同轮A品牌稿；Windows矢量优化、18帧ICO和Windows应用内图标不变。仅网页的白色圆角展示背景不属于图标内容。
+- 验收分开：产物图标帧真实字节/安装签名、正式 macOS 系统入口与应用内显示；Windows原生DPI仍未实测。
 
 ## 尼尔森十项复查
 

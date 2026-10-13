@@ -4,6 +4,8 @@
 
 ## 中文
 
+**build19视觉锚点修正**：macOS 图标恢复为用户第一轮确认的 A「石墨柔光」原始预览字节，各 ICNS 小尺寸从该图一次生成；macOS 应用内品牌图来自对应 A 稿。Windows 18 帧 ICO/应用内图标保持不变。修正的是资源视觉版本漂移，不把它归因于系统缓存。
+
 **build18修正**：针对 macOS 系统应用列表仍显示旧图标的问题，使用同一批准图标字节生成新的内容寻址图标资源名，重新构建并从本地DMG安装；没有重绘图标，也没有清理全局图标数据库。CavalryKit应用内图标、偏好与Cavalry宿主保持不变。
 
 **build17最新调整**：应用已确认的 A「石墨柔光」图标方向；保留上传图形构图，独立重建可缩放线条并对 Windows 小尺寸做像素覆盖/对齐修正。Windows ICO 改为18档独立资源，macOS ICNS与应用内品牌图分开处理。正式包应用前保留源帧、hash和用户库/偏好基线，Windows实机DPI与系统缓存仍需单独验收。
@@ -32,7 +34,7 @@
 - 安装覆盖暂存/回滚、同批重名冲突、递归目标/跨平台路径穿越保护。
 - 修正 macOS 图标视觉大小，完整 Retina ICNS；Windows 18 档内嵌 ICO、静态 VC++ 运行库与固定路径升级安装器。
 
-macOS 应用版本 **0.1.1 / build 18**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
+macOS 应用版本 **0.1.1 / build 19**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
 
 **验证边界**：Windows 真实 Cavalry、显卡/多屏拖窗、混合 DPI、任务栏缓存的人工验收仍延期；CI 不等价于这些体验测试。安全重启自动测试使用模拟进程，不对用户未保存工程发起退出。不能承诺所有环境绝对无 bug 或零卡顿。
 
@@ -44,6 +46,8 @@ macOS 应用版本 **0.1.1 / build 18**。macOS 实际交互与代码自动测�
 升级前退出 CavalryKit；macOS 替换原应用，Windows 使用固定路径安装器。旧便携副本不会自动删除。macOS 使用 ad-hoc 签名、未公证；Windows 没有商业代码签名证书。
 
 ## English
+
+**Build19 icon anchor restoration**: The macOS Dock/window master is byte-identical to the first approved A-direction preview. Each macOS ICNS frame is independently sized from that master, and the macOS in-app brand uses the matching A artwork. Windows ICO frames and the Windows brand remain unchanged.
 
 **Build16 refinement**: row-end icons and decorative dots share row-hover motion without moving click targets. Program Location uses a consistent line icon. Light secondary buttons, count badges and status surfaces follow the dark theme's geometry/hierarchy with tuned neutral materials, contrast and focus states.
 

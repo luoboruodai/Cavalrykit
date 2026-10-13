@@ -68,6 +68,11 @@ fn runtime_images_match_the_approved_platform_sources() {
             1024,
         ),
         (
+            include_bytes!("../assets/icon-macos-brand.png").as_slice(),
+            "macos-brand",
+            256,
+        ),
+        (
             include_bytes!("../assets/icon-macos-window.png").as_slice(),
             "macos",
             256,
@@ -104,10 +109,11 @@ fn windows_ico_contains_all_target_sizes_with_correct_rgba_pixels() {
 fn mac_dock_padding_does_not_shrink_the_in_app_brand_tile() {
     let brand = cavalrykit::ui::icon::brand_icon();
     assert_eq!((brand.width, brand.height), (256, 256));
-    assert_eq!(
-        brand.rgba,
-        rgba(include_bytes!("../assets/icon.png")).into_raw()
-    );
+    #[cfg(target_os = "macos")]
+    let brand_png = include_bytes!("../assets/icon-macos-brand.png").as_slice();
+    #[cfg(not(target_os = "macos"))]
+    let brand_png = include_bytes!("../assets/icon.png").as_slice();
+    assert_eq!(brand.rgba, rgba(brand_png).into_raw());
     let padded = rgba(include_bytes!("../assets/icon-macos-window.png"));
     assert_eq!(bounds(&padded, 128), (25, 25, 231, 231));
     assert_ne!(brand.rgba, padded.into_raw());
@@ -173,4 +179,32 @@ fn small_windows_frames_have_optical_coverage_not_a_master_resize() {
             "{size}px needs visible core stroke coverage"
         );
     }
+}
+
+#[test]
+fn approved_visual_anchor_and_windows_resources_stay_frozen() {
+    use sha2::{Digest, Sha256};
+    let design: serde_json::Value =
+        serde_json::from_slice(include_bytes!("../assets/icon-design.json")).unwrap();
+    let digest = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
+    let mac = include_bytes!("../assets/icon-macos.png");
+    let master = frame("macos", 1024);
+    assert_eq!(mac.as_slice(), master);
+    assert_eq!(
+        digest(mac),
+        design["approved_mac_preview_sha256"].as_str().unwrap()
+    );
+    let mac_brand = frame("macos-brand", 1024);
+    assert_eq!(
+        digest(&mac_brand),
+        design["approved_mac_inapp_master_sha256"].as_str().unwrap()
+    );
+    assert_eq!(
+        digest(include_bytes!("../assets/icon.ico")),
+        design["windows_approved_ico_sha256"].as_str().unwrap()
+    );
+    assert_eq!(
+        digest(include_bytes!("../assets/icon.png")),
+        design["windows_approved_brand_sha256"].as_str().unwrap()
+    );
 }

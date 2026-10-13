@@ -2,6 +2,11 @@
 
 ## 0.1.1 — 2026-10-13
 
+### build 19 / 恢复已确认的 macOS A 视觉锚点
+- Restore the exact approved first-round A master as the macOS Dock/window icon, and derive each smaller ICNS frame once from that master.
+- Use the same approved A artwork for the macOS in-app brand; preserve the Windows 18-frame ICO and Windows in-app artwork byte-for-byte.
+- Pin source hashes in icon tests so a later vector redraw cannot silently replace the macOS visual direction.
+
 ### build 18 / macOS 图标登记修正
 - Rebuild the macOS package with a content-addressed `CFBundleIconFile` resource name and reinstall it from the local DMG so Launch Services does not retain the previous same-name rendition.
 - Keep the approved icon bytes unchanged; this is an installation/resource-identity correction, not a visual redesign.

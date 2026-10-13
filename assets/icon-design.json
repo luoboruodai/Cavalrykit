@@ -1,18 +1,8 @@
 {
   "name": "Graphite Halo",
-  "revision": "icon-final-r1",
+  "revision": "icon-mac-visual-anchor-repair",
   "approved_date": "2026-10-14",
-  "source": "The supplied raster glyph was traced as scalable geometry; canonical frames preserve the reviewed optical-size rendering. Not a pixel-identical tracing claim.",
-  "material": {
-    "base": 8,
-    "rise": 63,
-    "curve": 1.3,
-    "rim": 163,
-    "width": 0.0092,
-    "line": 35,
-    "shadow": 0.3,
-    "glyph": 250
-  },
+  "source": "macOS Dock/window and macOS in-app icon come from the exact user-approved A-direction 1024px raster masters. Smaller macOS frames are individually resized once from that master, not recursively. Windows canonical optical-size resources stay unchanged.",
   "windows_sizes": [
     16,
     20,
@@ -39,13 +29,15 @@
   "canonical_frames_sha256": {
     "assets/icon-frames/app/1024.png": "10e0f48843b48d18a0dd562ee78fd4a3203a428b6181595f0181040c3372d919",
     "assets/icon-frames/app/256.png": "6447b8755df4512d80122bd4c5cac0a7367a84c6a0e25007d2b5c3772c556994",
-    "assets/icon-frames/macos/1024.png": "5cbd625909109bc468c406f1976c79fc61240bb9a811900ee34c43adc822e09e",
-    "assets/icon-frames/macos/128.png": "531a9e35cdc3f2c0d7441d671dcf4cdb8e2fb45fda492ef1429c994bc639117a",
-    "assets/icon-frames/macos/16.png": "3d55d20a0cb31feae70ef4ea86cba0cd4a52ebcf8ccbe0e74d5a83a34a2dd482",
-    "assets/icon-frames/macos/256.png": "6d0b6ecf74875389dfd53789f3f16bd0cda4d39526b72169aa503dfbf82eae5a",
-    "assets/icon-frames/macos/32.png": "c56ae214082a1bfd2fc2ad13952aadea77fdc852dfbf6cb45a1f4fb4f48b34fc",
-    "assets/icon-frames/macos/512.png": "ae301b442326d9d5a17d7390a2b99b57a5b1849244ff7f6bde576993c7233f96",
-    "assets/icon-frames/macos/64.png": "9c9c6be1e5eef2c3c14c99923384a1b94c22cd46634a4c17b823154dce492125",
+    "assets/icon-frames/macos/1024.png": "d9563abce6201f7f03a62b4442ad6ba0765426903a38519906bb2b97943ec5f2",
+    "assets/icon-frames/macos/128.png": "632eb352cb59c5b4dd7943da9a9e90631b347cc0c5a59b102586a8f8f899fe3c",
+    "assets/icon-frames/macos/16.png": "c89de8878f15871cc2c47596b87b2d7e82f854e4247fe730c283aeb0209da5f1",
+    "assets/icon-frames/macos/256.png": "a60e9d6bba752e6f000423b752c54420ef71b96d26ee0195e6125547078c7d2e",
+    "assets/icon-frames/macos/32.png": "3ac5c35f739ab63acda5065500d919dec2ded0440f0bf8a3286b4d3ef4bd5f92",
+    "assets/icon-frames/macos/512.png": "496cbb32377e795eb7cc16528f43828b7c6096b189498645214dac1aa02ae2c6",
+    "assets/icon-frames/macos/64.png": "b6abbd565f1ff5320f221d6c06f8e1c87ed7ec65a9a15eb903d7dba7c3564723",
+    "assets/icon-frames/macos-brand/1024.png": "2cfc32ac00b0f93567db5ebce481ea04e7497702080b69ef6bfdf1b8de21d866",
+    "assets/icon-frames/macos-brand/256.png": "dc540f773e16a1bc501da21bb793689a8f2d58203eca0b0ad6afc31ed86e6337",
     "assets/icon-frames/windows/128.png": "33e2c4a266b5a87cbb37b613c79c19b373cc90891820f70f96487403dbc5637a",
     "assets/icon-frames/windows/144.png": "48706d3e3fe14fa95aa466198c26b3c9c7c82765fdcd22823dd531422dd95ac3",
     "assets/icon-frames/windows/16.png": "4844005990ee3fabb0ad78921af285b19a2b983253b03cf6ac5644d9f402491e",
@@ -64,5 +56,33 @@
     "assets/icon-frames/windows/72.png": "745d096c1c154bf98e8d159d6075f5e609fb506b6cb6a32d6e9147757948330b",
     "assets/icon-frames/windows/80.png": "eb6347c313f1b5369b74c7f5bbe52701a318c6d54e982153cbf40d805b42764a",
     "assets/icon-frames/windows/96.png": "4cb57b8833900b37d3a61a23c585d2607b97423a78ae77dc619d9251b1f69caf"
-  }
+  },
+  "approved_mac_preview_sha256": "d9563abce6201f7f03a62b4442ad6ba0765426903a38519906bb2b97943ec5f2",
+  "approved_mac_inapp_master_sha256": "2cfc32ac00b0f93567db5ebce481ea04e7497702080b69ef6bfdf1b8de21d866",
+  "macos_size_derivation": "approved A 1024 master -> each target exactly once (Lanczos3); no vector redraw of macOS geometry",
+  "windows_approved_ico_sha256": "cad4175348393005ba6113fed41ea4ed339c7acdcfa638a4efc46257a719475f",
+  "windows_approved_brand_sha256": "6447b8755df4512d80122bd4c5cac0a7367a84c6a0e25007d2b5c3772c556994",
+  "windows_vector_material": {
+    "base": 8,
+    "rise": 63,
+    "curve": 1.3,
+    "rim": 163,
+    "width": 0.0092,
+    "line": 35,
+    "shadow": 0.3,
+    "glyph": 250
+  },
+  "macos_approved_a_material": {
+    "base": 8,
+    "rise": 63,
+    "curve": 1.3,
+    "rim": 158,
+    "width": 0.0105,
+    "line": 30,
+    "shadow": 0.32,
+    "glyph": 248,
+    "cool": 0
+  },
+  "macos_source_kind": "approved A raster master, not re-traced R1 vector",
+  "windows_source_kind": "independent optical-size frames from approved R1 vector; unchanged by Mac restoration"
 }

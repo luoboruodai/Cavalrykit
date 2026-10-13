@@ -71,6 +71,10 @@ fn main() -> Result<()> {
             png("assets/icon-frames/app/256.png", 256)?,
         ),
         (
+            "assets/icon-macos-brand.png",
+            png("assets/icon-frames/macos-brand/256.png", 256)?,
+        ),
+        (
             "assets/icon-window.png",
             png("assets/icon-frames/windows/256.png", 256)?,
         ),
