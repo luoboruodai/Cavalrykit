@@ -2,6 +2,10 @@
 
 ## 0.1.1 — 2026-10-13
 
+### build 18 / macOS 图标登记修正
+- Rebuild the macOS package with a content-addressed `CFBundleIconFile` resource name and reinstall it from the local DMG so Launch Services does not retain the previous same-name rendition.
+- Keep the approved icon bytes unchanged; this is an installation/resource-identity correction, not a visual redesign.
+
 ### build 17 / 已确认图标方向与 Windows 高清化
 - Apply the approved A “Graphite Halo” icon direction to CavalryKit’s app icon, in-app brand tile and platform resources.
 - Replace the single-master Windows icon pipeline with 18 independently rendered optical-size frames; preserve a separate macOS ICNS and app/window image path.

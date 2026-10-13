@@ -11,6 +11,14 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 # Reject stale generated bundles; never downsample away approved optical-size frames.
 cargo run --locked --example import_icon -- --check
+# Changing the resource name with the icon content avoids reusing an older
+# same-named application icon rendition. This does not reset system-wide caches.
+ICON_STEM="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIconFile' packaging/Info.plist)"
+ICON_HASH="$(shasum -a 256 assets/icon.icns | cut -c 1-12)"
+if [ "$ICON_STEM" != "CavalryKitIcon-$ICON_HASH" ]; then
+    echo "CFBundleIconFile must match the current icon content: CavalryKitIcon-$ICON_HASH" >&2
+    exit 1
+fi
 cargo build --release --locked
 # iconutil must decode the approved ICNS before it is embedded in the app.
 ICNS_CHECK="$WORK/iconset-check.iconset"
@@ -19,7 +27,7 @@ APP="$WORK/dmg/CavalryKit.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" dist
 cp target/release/cavalrykit "$APP/Contents/MacOS/CavalryKit"
 cp packaging/Info.plist "$APP/Contents/Info.plist"
-cp assets/icon.icns "$APP/Contents/Resources/CavalryKitIcon.icns"
+cp assets/icon.icns "$APP/Contents/Resources/$ICON_STEM.icns"
 cp packaging/THIRD-PARTY-NOTICES.txt "$APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 chmod +x "$APP/Contents/MacOS/CavalryKit"
 codesign --force --sign - "$APP"

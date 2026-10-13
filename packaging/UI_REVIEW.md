@@ -1,4 +1,4 @@
-# CavalryKit 0.1.1 / build 17 · 图标高清化与界面一致性
+# CavalryKit 0.1.1 / build 18 · 图标高清化与界面一致性
 
 本页保留 build16 的界面矩阵，Build17 增加图标资源矩阵；界面实现未重新设计。
 
@@ -43,6 +43,13 @@
 | I17-3 | 图标构建入口禁止回退到旧的单一 ICO256 连续缩小流程。 | `cargo run --locked --example import_icon -- --check` 检查已批准帧；macOS 构建脚本校验 ICNS 后直接打包。 |
 
 **当前产物**：build17 已安装到 `/Applications/CavalryKit.app`，正式窗口重新打开后观察到应用内品牌图标；macOS DMG/Windows ZIP 均由同一套批准资源构建并完成静态校验。Windows 原生显示仍未在本机执行。
+
+
+## Build 18 macOS 安装登记增量（2026-10-14）
+
+- 现象：正式包和直接读取的 ICNS 已是批准图标，但 macOS 系统应用列表仍存在旧 0.1.0/构建副本登记，并显示旧的同名图标呈现。
+- 修正：保持批准 ICNS 字节不变，仅将 `CFBundleIconFile` 改为内容寻址资源名 `CavalryKitIcon-cf28782cc147`，重新构建并从本地 build18 DMG 替换 `/Applications/CavalryKit.app`；定向更新 Launch Services 登记，清理已核对的 `dist/CavalryKit.app` 副本和不存在的旧磁盘镜像登记，不删除全局缓存。
+- 结果：正式应用列表仅保留 `/Applications/CavalryKit.app`；Spotlight 搜索 `CavalryKit` 仅显示一个条目并显示批准图标。应用重新打开后主界面品牌图标正常，Cavalry 宿主 PID、用户偏好和既有库未改变。
 
 ## 尼尔森十项复查
 
