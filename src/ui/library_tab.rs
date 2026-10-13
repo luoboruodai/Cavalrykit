@@ -12,10 +12,12 @@ impl CavalryKitApp {
         ui.spacing_mut().item_spacing.y = 0.0;
         self.update_rows();
         let area = ui.max_rect();
-        let (toolbar, _) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), t::CONTROL),
-            egui::Sense::hover(),
-        );
+        // Reserve the scrollbar lane even for a short/filtered list; align toolbar to
+        // the resting card, not the viewport or the outer hover extent.
+        let row_width = (ui.available_width() - t::LIST_GUTTER).max(160.0);
+        let (toolbar_slot, _) =
+            ui.allocate_exact_size(Vec2::new(row_width, t::CONTROL), egui::Sense::hover());
+        let toolbar = toolbar_slot.shrink2(Vec2::new(t::ROW_INSET, 0.0));
         let count = lang.tr(K::Count).replace(
             "{n}",
             &(self.library.scripts.len() + self.library.plugins.len()).to_string(),
@@ -49,10 +51,9 @@ impl CavalryKitApp {
         self.filter = [Filter::All, Filter::Scripts, Filter::Plugins][chosen];
         self.update_rows();
         ui.add_space(t::MD);
-        let (search_row, _) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), t::SEARCH_HEIGHT),
-            egui::Sense::hover(),
-        );
+        let (search_slot, _) =
+            ui.allocate_exact_size(Vec2::new(row_width, t::SEARCH_HEIGHT), egui::Sense::hover());
+        let search_row = search_slot.shrink2(Vec2::new(t::ROW_INSET, 0.0));
         let search_rect = Rect::from_min_max(
             search_row.min,
             search_row.max - Vec2::new(t::SEARCH_HEIGHT + t::SM, 0.0),
@@ -191,32 +192,44 @@ impl CavalryKitApp {
                     };
                     let key = path.clone();
                     ui.push_id((kind as u32, &key), |ui| {
-                        ui.add_enabled_ui(self.busy.is_none() && row_reveal >= 0.99, |ui| {
+                        // Input readiness is NOT the disabled visual state. During reveal
+                        // we only remove click sense, so no gray tint disappears at 99%.
+                        ui.add_enabled_ui(self.busy.is_none(), |ui| {
+                            let ready = row_reveal >= 0.99;
                             let (slot, _) = ui.allocate_exact_size(
-                                Vec2::new(ui.available_width(), t::ROW),
+                                Vec2::new(row_width.min(ui.available_width()), t::ROW),
                                 egui::Sense::hover(),
                             );
                             let hit =
                                 Rect::from_min_max(slot.min, slot.max - Vec2::new(0.0, t::SM));
-                            // The menu owns its fixed 40pt cell. A row click only selects; never executes.
-                            let action = Rect::from_center_size(
-                                Pos2::new(hit.right() - t::SM - t::CONTROL / 2.0, hit.center().y),
+                            let dots = Rect::from_center_size(
+                                Pos2::new(hit.right() - t::ROW_INSET - t::MD, hit.center().y),
+                                Vec2::splat(12.0),
+                            );
+                            let remove_rect = Rect::from_center_size(
+                                Pos2::new(dots.left() - t::SM - t::CONTROL / 2.0, hit.center().y),
                                 Vec2::splat(t::CONTROL),
                             );
+                            let show_rect =
+                                remove_rect.translate(Vec2::new(-t::CONTROL - t::MD, 0.0));
                             let select_rect = Rect::from_min_max(
                                 hit.min,
-                                Pos2::new(action.left() - t::SM, hit.bottom()),
+                                Pos2::new(show_rect.left() - t::SM, hit.bottom()),
                             );
                             let selected = self.selected_row.as_ref() == Some(path);
                             let response = ui.interact(
                                 select_rect,
                                 ui.id().with("select"),
-                                egui::Sense::click(),
+                                if ready {
+                                    egui::Sense::click()
+                                } else {
+                                    egui::Sense::hover()
+                                },
                             );
                             response.widget_info(|| {
                                 egui::WidgetInfo::selected(
                                     egui::WidgetType::SelectableLabel,
-                                    ui.is_enabled(),
+                                    ui.is_enabled() && ready,
                                     selected,
                                     name,
                                 )
@@ -224,22 +237,35 @@ impl CavalryKitApp {
                             if response.clicked() {
                                 self.selected_row = Some(path.clone());
                             }
-                            let popup_id = ui.id().with("more-menu");
-                            let active = ui.is_enabled()
-                                && (selected
-                                    || response.has_focus()
-                                    || ui.rect_contains_pointer(hit)
-                                    || ui.memory(|m| m.is_popup_open(popup_id)));
-                            let hover = t::motion(ui, ui.id().with("row-hover"), active);
+                            let hover = t::motion(
+                                ui,
+                                ui.id().with("row-hover"),
+                                ui.is_enabled()
+                                    && ready
+                                    && (selected
+                                        || response.has_focus()
+                                        || ui.rect_contains_pointer(hit)),
+                            );
                             let tone = t::category(p, kind == K::Plugins);
                             self.audit.row_colors.push(tone.color);
                             self.audit.row_hits.push(hit);
-                            let dy = 14.0 * (1.0 - row_reveal);
-                            let rect = hit.shrink2(Vec2::new(t::SM * (1.0 - hover), 0.0));
+                            let dy = 12.0 * (1.0 - row_reveal);
+                            let rect = hit.shrink2(Vec2::new(t::ROW_INSET * (1.0 - hover), 0.0));
                             self.audit
                                 .row_visuals
                                 .push((rect.translate(Vec2::new(0.0, dy)), row_reveal));
-                            let mut more = None;
+                            self.audit
+                                .row_decorations
+                                .push(dots.translate(Vec2::new(0.0, dy)));
+                            // A constant-height inset rail follows the surface instead of
+                            // abruptly growing into the rounded corners on both axes.
+                            let stripe = Rect::from_min_size(
+                                rect.min + Vec2::new(1.5, 8.0),
+                                Vec2::new(2.0 + hover * 0.5, rect.height() - 16.0),
+                            );
+                            self.audit
+                                .row_accent
+                                .push(stripe.translate(Vec2::new(0.0, dy)));
                             ui.with_visual_transform(
                                 egui::emath::TSTransform::from_translation(Vec2::new(0.0, dy)),
                                 |ui| {
@@ -247,26 +273,24 @@ impl CavalryKitApp {
                                     ui.painter().rect(
                                         rect,
                                         t::CARD_RADIUS,
-                                        t::mix(p.panel, p.surface, hover),
+                                        t::mix(p.panel, p.surface, hover * 0.75),
                                         Stroke::new(
-                                            if response.has_focus() { 1.5 } else { hover },
-                                            tone.color,
+                                            if response.has_focus() {
+                                                1.5
+                                            } else {
+                                                hover * 0.75
+                                            },
+                                            t::mix(p.panel, tone.color, 0.8),
                                         ),
                                         egui::StrokeKind::Inside,
                                     );
                                     ui.painter().rect_filled(
-                                        Rect::from_min_size(
-                                            rect.min + Vec2::new(0.0, 4.0 * (1.0 - hover)),
-                                            Vec2::new(
-                                                2.0 + 2.0 * hover,
-                                                rect.height() - 8.0 * (1.0 - hover),
-                                            ),
-                                        ),
+                                        stripe,
                                         2,
-                                        tone.color,
+                                        t::mix(p.panel, tone.color, 0.68 + 0.32 * hover),
                                     );
                                     let tile = Rect::from_center_size(
-                                        Pos2::new(rect.left() + 28.0, rect.center().y),
+                                        Pos2::new(rect.left() + 26.0, rect.center().y),
                                         Vec2::splat(28.0),
                                     );
                                     ui.painter().rect_filled(tile, 6, tone.tint);
@@ -281,77 +305,77 @@ impl CavalryKitApp {
                                         tone.color,
                                     );
                                     let x = rect.left() + 52.0;
-                                    let width = (action.left() - t::MD - x).max(16.0);
-                                    let title =
-                                        t::label_truncated(ui, name, t::font(14.0), p.text, width);
+                                    let width = (show_rect.left() - t::SM - x).max(16.0);
+                                    let title = t::label_truncated(
+                                        ui,
+                                        name,
+                                        t::content_font(14.0),
+                                        p.text,
+                                        width,
+                                    );
                                     let subtitle = meta
                                         .map(|m| format!("{} · {m}", lang.tr(kind)))
                                         .unwrap_or_else(|| lang.tr(kind).into());
                                     let detail = t::label_truncated(
                                         ui,
                                         &subtitle,
-                                        t::font(11.0),
+                                        t::content_font(10.5),
                                         t::helper_ink(p),
                                         width,
                                     );
-                                    let title_h = title.size().y;
-                                    let y =
-                                        rect.center().y - (title_h + t::XS + detail.size().y) / 2.0;
+                                    let title_ink = t::ink_bounds(&title);
+                                    let detail_ink = t::ink_bounds(&detail);
+                                    let top = rect.center().y
+                                        - (title_ink.height() + t::XS + detail_ink.height()) / 2.0;
+                                    let title_pos =
+                                        Pos2::new(x - title_ink.left(), top - title_ink.top());
+                                    let detail_pos = Pos2::new(
+                                        x - detail_ink.left(),
+                                        top + title_ink.height() + t::XS - detail_ink.top(),
+                                    );
+                                    self.audit.row_text_ink.push((
+                                        title_ink
+                                            .translate(title_pos.to_vec2() + Vec2::new(0.0, dy)),
+                                        detail_ink
+                                            .translate(detail_pos.to_vec2() + Vec2::new(0.0, dy)),
+                                    ));
                                     if title.elided || detail.elided {
                                         response.on_hover_text(format!("{name}\n{subtitle}"));
                                     }
-                                    ui.painter().galley(Pos2::new(x, y), title, p.text);
-                                    ui.painter().galley(
-                                        Pos2::new(x, y + title_h + t::XS),
-                                        detail,
-                                        p.muted,
+                                    ui.painter().galley(title_pos, title, p.text);
+                                    ui.painter().galley(detail_pos, detail, t::helper_ink(p));
+                                    t::decorative_dots(ui.painter(), dots.center(), p, hover);
+                                    let mut show = ui.new_child(
+                                        egui::UiBuilder::new()
+                                            .id_salt("reveal-action")
+                                            .max_rect(show_rect),
                                     );
-                                    let mut child =
-                                        ui.new_child(egui::UiBuilder::new().max_rect(action));
-                                    child.multiply_opacity(row_reveal);
-                                    more = Some(t::icon_button(
-                                        &mut child,
-                                        &format!("{} · {name}", lang.tr(K::More)),
-                                        Icon::More,
+                                    let reveal = t::icon_button_guarded(
+                                        &mut show,
+                                        &format!("{} · {name}", lang.tr(K::Reveal)),
+                                        Icon::Reveal,
                                         false,
                                         p,
-                                    ));
-                                },
-                            );
-                            let more = more.unwrap();
-                            self.audit.row_menu_buttons.push(more.rect);
-                            if more.clicked() {
-                                ui.memory_mut(|m| m.toggle_popup(popup_id));
-                            }
-                            // Popup Areas do not inherit disabled parent UIs. Close only this
-                            // row popup when a modal/busy/reveal disables the background.
-                            if !ui.is_enabled() && ui.memory(|m| m.is_popup_open(popup_id)) {
-                                ui.memory_mut(|m| m.close_popup());
-                            }
-                            egui::popup::popup_below_widget(
-                                ui,
-                                popup_id,
-                                &more,
-                                egui::popup::PopupCloseBehavior::CloseOnClickOutside,
-                                |ui| {
-                                    ui.set_min_width(176.0);
-                                    ui.spacing_mut().item_spacing.y = t::SM;
-                                    let show =
-                                        t::button(ui, lang.tr(K::Reveal), t::Button::Quiet, p);
-                                    ui.separator();
-                                    let remove = t::button(
-                                        ui,
-                                        lang.tr(K::Uninstall),
-                                        t::Button::QuietDanger,
-                                        p,
+                                        ready,
                                     );
-                                    self.audit.row_actions.push((show.rect, remove.rect));
-                                    if show.clicked() {
-                                        ui.memory_mut(|m| m.close_popup());
+                                    let mut remove = ui.new_child(
+                                        egui::UiBuilder::new()
+                                            .id_salt("remove-action")
+                                            .max_rect(remove_rect),
+                                    );
+                                    let uninstall = t::icon_button_guarded(
+                                        &mut remove,
+                                        &format!("{} · {name}", lang.tr(K::Uninstall)),
+                                        Icon::Trash,
+                                        true,
+                                        p,
+                                        ready,
+                                    );
+                                    self.audit.row_actions.push((reveal.rect, uninstall.rect));
+                                    if reveal.clicked() {
                                         paths::reveal_in_file_manager(path);
                                     }
-                                    if remove.clicked() {
-                                        ui.memory_mut(|m| m.close_popup());
+                                    if uninstall.clicked() {
                                         self.confirm_uninstall = Some(path.clone());
                                     }
                                 },
@@ -415,21 +439,33 @@ impl CavalryKitApp {
             rect.min + Vec2::new(40.0, 0.0),
             rect.max - Vec2::new(clear_width.max(t::SM), 0.0),
         );
+        let sample = ui.painter().layout_no_wrap(
+            if self.search.is_empty() {
+                lang.tr(K::Search).into()
+            } else {
+                self.search.clone()
+            },
+            t::font(13.0),
+            p.text,
+        );
+        let optical_shift = sample.rect.center().y - t::ink_bounds(&sample).center().y;
+        let editor_rect = text_rect.translate(Vec2::new(0.0, optical_shift));
         let mut text_ui = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt("search-editor")
-                .max_rect(text_rect),
+                .max_rect(editor_rect),
         );
         let edit = egui::TextEdit::singleline(&mut self.search)
             .id(id)
-            .font(t::font(14.0))
+            .font(t::font(13.0))
             .frame(false)
             .margin(egui::Margin::ZERO)
             .desired_width(text_rect.width())
             .min_size(text_rect.size())
             .vertical_align(egui::Align::Center)
             .show(&mut text_ui);
-        self.audit.search_text = Some(Rect::from_min_size(edit.galley_pos, edit.galley.size()));
+        self.audit.search_text =
+            Some(t::ink_bounds(&edit.galley).translate(edit.galley_pos.to_vec2()));
         let hint = super::search_hint::current(
             ui.ctx(),
             ui.is_enabled()
@@ -443,14 +479,12 @@ impl CavalryKitApp {
             let g = t::label_truncated(
                 ui,
                 label,
-                t::font(14.0),
+                t::font(13.0),
                 t::placeholder_ink(p),
                 text_rect.width(),
             );
-            let pos = Pos2::new(
-                text_rect.left(),
-                text_rect.center().y - g.size().y / 2.0 + hint.offset,
-            );
+            let pos = t::left_ink(text_rect.left(), text_rect.center().y + hint.offset, &g);
+            self.audit.search_text = Some(t::ink_bounds(&g).translate(pos.to_vec2()));
             let mut painter = ui
                 .painter()
                 .with_clip_rect(text_rect.intersect(ui.clip_rect()));

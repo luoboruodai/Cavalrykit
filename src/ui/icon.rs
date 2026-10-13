@@ -14,6 +14,11 @@ pub fn brand_icon() -> egui::IconData {
     decode(include_bytes!("../../assets/icon.png"))
 }
 
+/// Used only to identify the host in Program Location, never as CavalryKit branding.
+pub fn host_icon() -> egui::IconData {
+    decode(include_bytes!("../../assets/cavalry-app-icon.png"))
+}
+
 fn decode(png: &[u8]) -> egui::IconData {
     match image::load_from_memory(png) {
         Ok(img) => {

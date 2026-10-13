@@ -31,35 +31,48 @@ impl CavalryKitApp {
         });
         let text = ui
             .painter()
-            .layout_no_wrap(status_label.into(), t::font(10.0), p.muted);
+            .layout_no_wrap(status_label.into(), t::font(11.0), p.muted);
         let status = Rect::from_center_size(
-            Pos2::new(rect.right() - (text.size().x + 22.0) / 2.0, rect.center().y),
-            Vec2::new(text.size().x + 22.0, 24.0),
+            Pos2::new(
+                rect.right() - (t::ink_bounds(&text).width() + 30.0) / 2.0,
+                rect.center().y,
+            ),
+            Vec2::new(t::ink_bounds(&text).width() + 30.0, 28.0),
         );
         ui.painter().rect(
             status,
-            12,
+            14,
             p.surface,
             Stroke::new(1.0_f32, p.line),
             egui::StrokeKind::Inside,
         );
+        let pulse = super::motion::status_breath(ui.ctx(), self.cavalry_running, ui.is_enabled());
+        self.audit.status_pulse = pulse;
+        let dot = Pos2::new(status.left() + 11.0, status.center().y);
+        let color = if self.cavalry_running {
+            t::category(p, false).color
+        } else {
+            p.muted
+        };
+        if self.cavalry_running {
+            ui.painter().circle_filled(
+                dot,
+                4.0 + 0.8 * pulse,
+                color.gamma_multiply(0.05 + 0.11 * pulse),
+            );
+        }
         ui.painter().circle_filled(
-            Pos2::new(status.left() + 9.0, status.center().y),
+            dot,
             2.5,
-            if self.cavalry_running {
-                t::category(p, false).color
+            color.gamma_multiply(if self.cavalry_running {
+                0.65 + 0.35 * pulse
             } else {
-                p.muted
-            },
+                1.0
+            }),
         );
-        ui.painter().galley(
-            Pos2::new(
-                status.left() + 16.0,
-                status.center().y - text.size().y / 2.0,
-            ),
-            text,
-            p.muted,
-        );
+        let text_pos = t::left_ink(status.left() + 20.0, status.center().y, &text);
+        self.audit.status_text = Some(t::ink_bounds(&text).translate(text_pos.to_vec2()));
+        ui.painter().galley(text_pos, text, p.muted);
         let r = ui
             .interact(
                 status,
@@ -272,8 +285,8 @@ impl CavalryKitApp {
         }
         let inner = rect.shrink(t::MD);
         let compact = height < 180.0;
-        let tile_size = if compact { 28.0 } else { 40.0 };
-        let text_gap = if compact { t::XS } else { t::SM };
+        let tile_size = if compact { 36.0 } else { 56.0 };
+        let text_gap = if compact { t::SM } else { t::MD };
         let mut job = egui::text::LayoutJob::simple(
             lang.tr(K::DropTitle).into(),
             t::medium(14.0),
@@ -294,12 +307,9 @@ impl CavalryKitApp {
         );
         ui.painter()
             .rect_filled(tile, 10, t::mix(p.surface, tone.tint, active));
-        icons::paint(
-            ui.painter(),
-            tile.shrink(if compact { 4.0 } else { 9.0 }),
-            Icon::Import,
-            tone.color,
-        );
+        let icon_rect = tile.shrink(if compact { 6.0 } else { 12.0 });
+        self.audit.import_icon = Some(icon_rect);
+        icons::paint(ui.painter(), icon_rect, Icon::Import, tone.color);
         let title_y = start + tile_size + text_gap - 2.0 * active;
         let format_y = title_y + title.size().y + t::XS;
         let title_rect = Rect::from_min_size(

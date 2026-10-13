@@ -8,6 +8,8 @@ pub const LG: f32 = 24.0;
 pub const CONTROL: f32 = 40.0;
 pub const SEARCH_HEIGHT: f32 = 44.0;
 pub const ROW: f32 = 64.0;
+pub const LIST_GUTTER: f32 = 16.0;
+pub const ROW_INSET: f32 = 4.0;
 pub const HEADER: f32 = 40.0;
 pub const RADIUS: u8 = 6;
 pub const CARD_RADIUS: u8 = 8;
@@ -229,8 +231,7 @@ pub fn count_badge(ui: &egui::Ui, rect: egui::Rect, label: &str, tone: Category)
     let g = ui
         .painter()
         .layout_no_wrap(label.into(), medium(12.0), tone.color);
-    ui.painter()
-        .galley(rect.center() - g.size() / 2.0, g, tone.color);
+    ui.painter().galley(centered_ink(rect, &g), g, tone.color);
     let r = ui.interact(
         rect,
         ui.make_persistent_id("result-count"),
@@ -287,11 +288,8 @@ pub fn shortcut(
     );
     job.wrap.max_rows = 2;
     let g = ui.painter().layout_job(job);
-    ui.painter().galley(
-        egui::pos2(rect.left() + 40.0, rect.center().y - g.size().y / 2.0),
-        g,
-        p.text,
-    );
+    ui.painter()
+        .galley(left_ink(rect.left() + 40.0, rect.center().y, &g), g, p.text);
     r.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 /// Full-width, soft-tinted action below the drop surface. Icon/label share one hit region.
@@ -348,9 +346,123 @@ pub fn soft_action(
         tone.color,
     );
     ui.painter().galley(
-        egui::pos2(left + 18.0 + SM, rect.center().y - g.size().y / 2.0 + press),
+        left_ink(left + 18.0 + SM, rect.center().y + press, &g),
         g,
         tone.color,
+    );
+    r.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+pub fn path_field(
+    ui: &mut egui::Ui,
+    value: &mut String,
+    hint: &str,
+    label: &str,
+    p: Palette,
+) -> egui::Response {
+    let (rect, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), CONTROL),
+        egui::Sense::hover(),
+    );
+    let id = ui.make_persistent_id("path-input");
+    let focus = ui.memory(|m| m.has_focus(id));
+    let hover = motion(
+        ui,
+        id.with("hover"),
+        ui.is_enabled() && (ui.rect_contains_pointer(rect) || focus),
+    );
+    ui.painter().rect(
+        rect,
+        8,
+        p.surface,
+        egui::Stroke::new(
+            if focus { 1.5 } else { 0.7 + 0.3 * hover },
+            mix(p.line, p.focus, hover),
+        ),
+        egui::StrokeKind::Inside,
+    );
+    let inner = rect.shrink2(Vec2::new(12.0, 0.0));
+    let text = if value.is_empty() {
+        hint
+    } else {
+        value.as_str()
+    };
+    let g = ui.painter().layout_no_wrap(text.into(), font(13.0), p.text);
+    let shift = g.rect.center().y - ink_bounds(&g).center().y;
+    let mut child =
+        ui.new_child(egui::UiBuilder::new().max_rect(inner.translate(Vec2::new(0.0, shift))));
+    let output = egui::TextEdit::singleline(value)
+        .id(id)
+        .font(font(13.0))
+        .frame(false)
+        .margin(egui::Margin::ZERO)
+        .min_size(inner.size())
+        .desired_width(inner.width())
+        .vertical_align(egui::Align::Center)
+        .show(&mut child);
+    if value.is_empty() {
+        let g = label_truncated(ui, hint, font(13.0), helper_ink(p), inner.width());
+        ui.painter().galley(
+            left_ink(inner.left(), rect.center().y, &g),
+            g,
+            helper_ink(p),
+        );
+    }
+    output.response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, ui.is_enabled(), label)
+    });
+    output.response
+}
+pub fn save_action(ui: &mut egui::Ui, label: &str, p: Palette) -> egui::Response {
+    let tone = category(p, false);
+    let g = ui
+        .painter()
+        .layout_no_wrap(label.into(), medium(13.0), tone.color);
+    let (rect, r) = ui.allocate_exact_size(
+        Vec2::new((g.size().x + 2.0 * MD).max(88.0), CONTROL),
+        egui::Sense::click(),
+    );
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
+    let hover = motion(
+        ui,
+        r.id.with("hover"),
+        ui.is_enabled() && (r.hovered() || r.has_focus()),
+    );
+    ui.painter().rect(
+        rect,
+        8,
+        mix(tone.tint, p.surface, hover * 0.18),
+        egui::Stroke::new(if r.has_focus() { 1.5 } else { hover * 0.7 }, tone.color),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().galley(centered_ink(rect, &g), g, tone.color);
+    r.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+pub fn text_action(ui: &mut egui::Ui, label: &str, p: Palette) -> egui::Response {
+    let g = ui
+        .painter()
+        .layout_no_wrap(label.into(), font(12.0), helper_ink(p));
+    let (rect, r) = ui.allocate_exact_size(
+        Vec2::new(g.size().x + 2.0 * SM, CONTROL),
+        egui::Sense::click(),
+    );
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
+    let hover = motion(
+        ui,
+        r.id.with("hover"),
+        ui.is_enabled() && (r.hovered() || r.has_focus()),
+    );
+    if r.has_focus() {
+        ui.painter().rect_stroke(
+            rect.shrink(2.0),
+            6,
+            egui::Stroke::new(1.0_f32, p.focus),
+            egui::StrokeKind::Inside,
+        );
+    }
+    ui.painter().galley_with_override_text_color(
+        centered_ink(rect, &g),
+        g,
+        mix(helper_ink(p), p.muted, hover),
     );
     r.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -363,6 +475,36 @@ pub fn scrollbar_opacity(p: Palette) -> f32 {
                 .all(|bg| contrast(mix(*bg, p.text, *alpha), *bg) >= 3.0)
         })
         .unwrap_or(1.0)
+}
+/// Optical ink metrics, not the font's line box (which includes asymmetric leading).
+pub fn ink_bounds(g: &egui::Galley) -> egui::Rect {
+    if g.mesh_bounds.is_finite() && g.mesh_bounds.is_positive() {
+        g.mesh_bounds
+    } else {
+        g.rect
+    }
+}
+pub fn centered_ink(rect: egui::Rect, g: &egui::Galley) -> egui::Pos2 {
+    rect.center() - ink_bounds(g).center().to_vec2()
+}
+pub fn left_ink(left: f32, center_y: f32, g: &egui::Galley) -> egui::Pos2 {
+    let ink = ink_bounds(g);
+    egui::pos2(left - ink.left(), center_y - ink.center().y)
+}
+pub fn content_font(size: f32) -> FontId {
+    FontId::new(
+        size,
+        egui::FontFamily::Name(super::fonts::FAMILY_CONTENT.into()),
+    )
+}
+/// Muted decorative dots are not a control and never appear in keyboard/accessibility targets.
+pub fn decorative_dots(painter: &egui::Painter, center: egui::Pos2, p: Palette, active: f32) {
+    let ink = mix(p.muted, p.panel, 0.55 - active * 0.10);
+    for y in [-4.0, 0.0, 4.0] {
+        let c = center + Vec2::new(0.0, y);
+        painter.circle_filled(c, 1.7, ink.gamma_multiply(0.15));
+        painter.circle_filled(c, 0.9, ink);
+    }
 }
 pub fn font(size: f32) -> FontId {
     FontId::proportional(size)
@@ -574,7 +716,7 @@ pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui:
         );
     }
     ui.painter().galley(
-        rect.center() - galley.size() / 2.0 + Vec2::new(0.0, press),
+        centered_ink(rect, &galley) + Vec2::new(0.0, press),
         galley,
         ink,
     );
@@ -733,19 +875,40 @@ pub fn icon_button(
     danger: bool,
     p: Palette,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(CONTROL), egui::Sense::click());
+    icon_button_guarded(ui, label, icon, danger, p, true)
+}
+pub fn icon_button_guarded(
+    ui: &mut egui::Ui,
+    label: &str,
+    icon: super::icons::Icon,
+    danger: bool,
+    p: Palette,
+    interactive: bool,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::splat(CONTROL),
+        if interactive {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        },
+    );
     response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            ui.is_enabled() && interactive,
+            label,
+        )
     });
     let hover = motion(
         ui,
         response.id.with("hover"),
-        ui.is_enabled() && (response.hovered() || response.has_focus()),
+        ui.is_enabled() && interactive && (response.hovered() || response.has_focus()),
     );
     let press = motion(
         ui,
         response.id.with("press"),
-        ui.is_enabled() && response.is_pointer_button_down_on(),
+        ui.is_enabled() && interactive && response.is_pointer_button_down_on(),
     );
     let color = mix(p.muted, if danger { p.danger } else { p.text }, hover);
     ui.painter()
@@ -765,7 +928,7 @@ pub fn icon_button(
         color,
     );
     let response = response.on_hover_text(label);
-    if ui.is_enabled() {
+    if ui.is_enabled() && interactive {
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     } else {
         response
@@ -808,23 +971,12 @@ pub fn refresh_button(ui: &mut egui::Ui, label: &str, p: Palette) -> egui::Respo
         })
         .unwrap_or(0.0);
     let center = rect.center() + Vec2::new(0.0, press);
-    let points = (0..=22)
-        .map(|i| {
-            let a = 0.5 + i as f32 * 5.0 / 22.0 + spin;
-            center + Vec2::angled(a) * 6.5
-        })
-        .collect::<Vec<_>>();
-    let stroke = egui::Stroke::new(1.4_f32, mix(p.muted, tone.color, active));
-    let arrow = |v: Vec2| center + egui::emath::Rot2::from_angle(spin) * v;
-    ui.painter().add(egui::Shape::line(points, stroke));
-    ui.painter().add(egui::Shape::line(
-        vec![
-            arrow(Vec2::new(5.0, -6.0)),
-            arrow(Vec2::new(5.0, -1.0)),
-            arrow(Vec2::new(0.0, -1.0)),
-        ],
-        stroke,
-    ));
+    super::icons::paint_refresh(
+        ui.painter(),
+        egui::Rect::from_center_size(center, Vec2::splat(20.0)),
+        mix(p.muted, tone.color, active),
+        spin,
+    );
     r.on_hover_text(label)
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -885,15 +1037,18 @@ pub fn nav_button(
     } else {
         mix(p.muted, p.text, hover)
     };
-    super::icons::paint(
-        ui.painter(),
-        egui::Rect::from_center_size(
-            egui::pos2(rect.left() + 18.0, rect.center().y),
-            Vec2::splat(16.0),
-        ),
-        icon,
-        if selected { p.accent_text } else { color },
-    );
+    // Program Location supplies the actual host app image in this reserved slot.
+    if !matches!(icon, super::icons::Icon::Cavalry) {
+        super::icons::paint(
+            ui.painter(),
+            egui::Rect::from_center_size(
+                egui::pos2(rect.left() + 18.0, rect.center().y),
+                Vec2::splat(16.0),
+            ),
+            icon,
+            if selected { p.accent_text } else { color },
+        );
+    }
     let badge_width = badge
         .map(|n| {
             let g = ui
@@ -919,11 +1074,8 @@ pub fn nav_button(
     );
     job.wrap.max_rows = 2;
     let g = ui.painter().layout_job(job);
-    ui.painter().galley(
-        egui::pos2(rect.left() + 36.0, rect.center().y - g.size().y / 2.0),
-        g,
-        color,
-    );
+    ui.painter()
+        .galley(left_ink(rect.left() + 36.0, rect.center().y, &g), g, color);
     let response = response.on_hover_text(label);
     if ui.is_enabled() {
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -1000,8 +1152,7 @@ pub fn segmented(
             },
             color,
         );
-        ui.painter()
-            .galley(cells[n].center() - g.size() / 2.0, g, color);
+        ui.painter().galley(centered_ink(cells[n], &g), g, color);
         if r.has_focus() {
             ui.painter().rect_stroke(
                 cells[n].shrink2(Vec2::new(0.0, XS)),
@@ -1018,6 +1169,79 @@ pub fn segmented(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reset_hover_has_no_filled_button_and_control_ink_is_optically_centered() {
+        for theme in [Theme::Cavalry, Theme::Light] {
+            let ctx = egui::Context::default();
+            crate::ui::fonts::setup(&ctx);
+            apply_settings(
+                &ctx,
+                &Settings {
+                    theme,
+                    ..Default::default()
+                },
+            );
+            let p = palette(&Settings {
+                theme,
+                ..Default::default()
+            });
+            let mut rect = egui::Rect::NOTHING;
+            for i in 0..6 {
+                let output = ctx.run(
+                    egui::RawInput {
+                        time: Some(i as f64),
+                        events: if i > 0 {
+                            vec![egui::Event::PointerMoved(rect.center())]
+                        } else {
+                            vec![]
+                        },
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default()
+                            .show(ctx, |ui| rect = text_action(ui, "恢复默认设置", p).rect);
+                    },
+                );
+                if i == 5 {
+                    for shape in output.shapes {
+                        if let egui::Shape::Rect(r) = shape.shape {
+                            if rect.contains_rect(r.rect) {
+                                assert_eq!(r.fill.a(), 0, "reset hover must not acquire a plate");
+                            }
+                        }
+                    }
+                }
+            }
+            for language in crate::settings::Language::ALL {
+                let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default()
+                        .show(ctx, |ui| {
+                            for label in [
+                                language.tr(crate::i18n::Key::ScriptsFolder),
+                                language.tr(crate::i18n::Key::Plugins),
+                                language.tr(crate::i18n::Key::Save),
+                            ] {
+                                let g =
+                                    ui.painter()
+                                        .layout_no_wrap(label.into(), font(13.0), p.text);
+                                let target = egui::Rect::from_min_size(
+                                    egui::pos2(0.0, 0.0),
+                                    Vec2::new(160.0, 40.0),
+                                );
+                                let pos = centered_ink(target, &g);
+                                assert!(
+                                    (ink_bounds(&g).translate(pos.to_vec2()).center()
+                                        - target.center())
+                                    .length()
+                                        < 0.01
+                                );
+                            }
+                        })
+                        .inner
+                });
+            }
+        }
+    }
     #[test]
     fn motion_is_finite_and_reduced_motion_changes_in_one_frame() {
         for reduced in [false, true] {

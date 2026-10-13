@@ -1,4 +1,11 @@
-CavalryKit bundled font notices
+CavalryKit bundled resource notices
+
+Cavalry host application icon
+Third-party Cavalry application icon; not covered by the font licenses below.
+The small app icon is used only to identify the host in Program Location.
+It is not CavalryKit branding and does not imply endorsement or affiliation.
+All rights in the application icon remain with its owner.
+
 
 Roboto
 Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)
@@ -9,7 +16,7 @@ CavalryKit UI SC / JP / KR Regular and Medium
 © 2014-2021 Adobe (http://www.adobe.com/).
 Source: https://github.com/notofonts/noto-cjk
 Upstream commit: f8d157532fbfaeda587e826d4cd5b21a49186f7c
-Only UI glyphs are included; the original full font is not bundled.
+UI faces contain only the translated UI glyphs. CavalryKit Content Regular is a renamed derivative of Noto Sans CJK SC Regular retaining its Unicode coverage for arbitrary mixed-script filenames. The same source commit and OFL below apply; no private filenames are sampled.
 
 This Font Software is licensed under the SIL Open Font License,
 Version 1.1.

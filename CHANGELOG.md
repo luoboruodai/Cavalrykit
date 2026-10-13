@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.1.1 — 2026-10-12
+## 0.1.1 — 2026-10-13
+
+### build 15 / 细节与一致性
+- Add an inset rounded sidebar, ink-centered controls and balanced status padding with a bounded foreground-only breathing indicator.
+- Align search/refresh with resting list cards; repair the circular refresh arrow and soften the inset row accent.
+- Restore separate reveal/remove icon actions; trailing dots are decorative only, superseding the build14 menu.
+- Keep reveal input gating separate from disabled colors to avoid a gray flash during entry.
+- Use a complete Noto-derived content face for arbitrary mixed-script filenames, with shared baseline metrics instead of mixed system fallback.
+- Remove the Save icon and reset hover plate, simplify safety copy, rename Cavalry light and Program Location, and align the path/browser controls.
+
 
 ### build 14 — 2026-10-13 / 后一轮界面要求
 - Replace always-visible row actions with a three-dot menu, safe separation and removal confirmation.

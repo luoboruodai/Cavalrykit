@@ -45,3 +45,14 @@ fn every_regional_weight_covers_all_ui_languages_without_system_fonts() {
         assert!(missing.is_empty(), "Missing UI glyphs: {missing:?}");
     }
 }
+
+#[test]
+fn arbitrary_mixed_filenames_share_complete_content_font_coverage() {
+    let face = ttf_parser::Face::parse(
+        include_bytes!("../assets/fonts/CavalryKit-Content-Regular.otf"),
+        0,
+    )
+    .unwrap();
+    // Synthetic multilingual phrases, not a subset sampled from a user's library.
+    for ch in "Simulate动态素材归档 替换未使用资源 插值仿射关键帧Bezier摄像机 标题日本語ひらがな한글테스트 ABCxyz123._-".chars() {assert!(face.glyph_index(ch).is_some(),"missing content glyph: {ch}");}
+}

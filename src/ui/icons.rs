@@ -1,5 +1,5 @@
 //! Small, consistent vector icons. Never depend on symbol-font coverage.
-use egui::{Color32, Painter, Pos2, Rect, Stroke, Vec2};
+use egui::{Color32, Painter, Rect, Stroke, Vec2};
 #[derive(Clone, Copy, Debug)]
 pub enum Icon {
     More,
@@ -116,17 +116,7 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
             p.circle_stroke(point(-1.5, -1.5), 5.5 * scale, stroke);
             line((3.0, 3.0), (7.0, 7.0));
         }
-        Icon::Refresh => {
-            let pts: Vec<Pos2> = (0..=22)
-                .map(|i| {
-                    let a = 0.5 + i as f32 * 5.0 / 22.0;
-                    point(a.cos() * 6.5, a.sin() * 6.5)
-                })
-                .collect();
-            p.add(egui::Shape::line(pts, stroke));
-            line((5.0, -6.0), (5.0, -1.0_f32));
-            line((5.0, -1.0_f32), (0.0, -1.0_f32));
-        }
+        Icon::Refresh => paint_refresh(p, rect, color, 0.0),
         Icon::Trash => {
             line((-7.0, -5.0), (7.0, -5.0));
             line((-3.0, -8.0), (3.0, -8.0));
@@ -167,9 +157,68 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
     }
 }
 
+/// One continuous circular arrow. The arrow tip is exactly the end of the arc.
+pub fn paint_refresh(p: &Painter, rect: Rect, color: Color32, angle: f32) {
+    let scale = rect.width().min(rect.height()) / 20.0;
+    let c = rect.center();
+    let radius = 6.0 * scale;
+    let start = -0.40;
+    let end = std::f32::consts::TAU - 1.10;
+    let points = (0..=32)
+        .map(|i| c + Vec2::angled(start + (end - start) * i as f32 / 32.0 + angle) * radius)
+        .collect::<Vec<_>>();
+    let tip = *points.last().unwrap();
+    let tangent = Vec2::angled(end + angle + std::f32::consts::FRAC_PI_2);
+    let normal = Vec2::angled(end + angle);
+    let stroke = Stroke::new(1.5 * scale, color);
+    p.add(egui::Shape::line(points, stroke));
+    p.add(egui::Shape::line(
+        vec![
+            tip - tangent * 2.8 * scale - normal * 1.8 * scale,
+            tip,
+            tip - tangent * 2.8 * scale + normal * 1.8 * scale,
+        ],
+        stroke,
+    ));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::Pos2;
+    #[test]
+    fn refresh_arc_and_arrow_join_and_remain_bounded_through_a_full_turn() {
+        let ctx = egui::Context::default();
+        let slot = Rect::from_min_size(Pos2::new(20.0, 20.0), Vec2::splat(20.0));
+        for i in 0..36 {
+            let out = ctx.run(egui::RawInput::default(), |ctx| {
+                paint_refresh(
+                    &ctx.layer_painter(egui::LayerId::background()),
+                    slot,
+                    Color32::WHITE,
+                    i as f32 * std::f32::consts::TAU / 36.0,
+                )
+            });
+            let paths = out
+                .shapes
+                .iter()
+                .filter_map(|s| {
+                    if let egui::Shape::Path(p) = &s.shape {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(paths.len(), 2);
+            assert_eq!(paths[0].points.last(), Some(&paths[1].points[1]));
+            for shape in out.shapes {
+                assert!(slot
+                    .expand(0.1)
+                    .contains_rect(shape.shape.visual_bounding_rect()));
+            }
+        }
+    }
     #[test]
     fn every_vector_icon_stroke_stays_inside_its_slot() {
         let ctx = egui::Context::default();

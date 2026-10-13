@@ -64,8 +64,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (language, screen) in [
         (Language::Zh, "main"),
         (Language::Zh, "stopped"),
-        (Language::Zh, "more-menu"),
-        (Language::Zh, "light-more-menu"),
+        (Language::Zh, "mixed-names"),
+        (Language::Zh, "light-mixed-names"),
         (Language::Zh, "search-hint"),
         (Language::Zh, "hover-search"),
         (Language::Zh, "light-hover-search"),
@@ -78,6 +78,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Language::Zh, "light-plugins"),
         (Language::Zh, "light-main"),
         (Language::Zh, "light-appearance"),
+        (Language::Zh, "light-installation"),
+        (Language::Zh, "light-cavalry-settings"),
         (Language::En, "light-settings"),
         (Language::Zh, "light-main-small"),
         (Language::En, "light-main-small"),
@@ -86,6 +88,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Language::Zh, "appearance"),
         (Language::Zh, "installation"),
         (Language::Zh, "cavalry-settings"),
+        (Language::Zh, "cavalry-settings-small"),
+        (Language::En, "cavalry-settings-small"),
+        (Language::Ja, "cavalry-settings-small"),
+        (Language::Ko, "cavalry-settings-small"),
+        (Language::Zh, "light-cavalry-settings-small"),
         (Language::Zh, "result"),
         (Language::Zh, "conflict"),
         (Language::Zh, "restart"),
@@ -119,26 +126,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         egui::Pos2::ZERO,
                         egui::vec2(size[0] as f32, size[1] as f32),
                     )),
-                    time: Some(if screen.ends_with("more-menu") {
-                        [0.0, 1.0, 2.0, 2.016, 2.04, 2.8][frame]
-                    } else if screen == "search-hint" && frame == 5 {
+                    time: Some(if screen == "search-hint" && frame == 5 {
                         21.0
                     } else {
                         frame as f64
                     }),
-                    events: if screen.ends_with("more-menu") {
-                        let point = egui::pos2(1068.0, 168.0);
-                        let mut events = vec![egui::Event::PointerMoved(point)];
-                        if frame == 2 || frame == 3 {
-                            events.push(egui::Event::PointerButton {
-                                pos: point,
-                                button: egui::PointerButton::Primary,
-                                pressed: frame == 2,
-                                modifiers: egui::Modifiers::NONE,
-                            });
-                        }
-                        events
-                    } else if screen.ends_with("hover-search") {
+                    events: if screen.ends_with("hover-search") {
                         vec![egui::Event::PointerMoved(egui::pos2(600.0, 102.0))]
                     } else if screen == "hover-drop" {
                         vec![egui::Event::PointerMoved(egui::pos2(140.0, 200.0))]

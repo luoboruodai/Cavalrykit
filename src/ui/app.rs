@@ -56,6 +56,13 @@ impl From<&Settings> for StyleKey {
 #[derive(Default)]
 pub(crate) struct Audit {
     pub rail: Option<egui::Rect>,
+    pub rail_surface: Option<egui::Rect>,
+    pub status_text: Option<egui::Rect>,
+    pub status_pulse: f32,
+    pub row_decorations: Vec<egui::Rect>,
+    pub row_accent: Vec<egui::Rect>,
+    pub row_text_ink: Vec<(egui::Rect, egui::Rect)>,
+    pub import_icon: Option<egui::Rect>,
     pub library: Option<egui::Rect>,
     pub card: Option<egui::Rect>,
     pub title: Option<egui::Rect>,
@@ -68,7 +75,6 @@ pub(crate) struct Audit {
     pub search_text: Option<egui::Rect>,
     pub search_icon: Option<egui::Rect>,
     pub search_hint: String,
-    pub row_menu_buttons: Vec<egui::Rect>,
     pub row_visuals: Vec<(egui::Rect, f32)>,
     pub row_hits: Vec<egui::Rect>,
     pub navigation_colors: Vec<egui::Color32>,
@@ -89,6 +95,8 @@ pub(crate) struct Audit {
     pub row_colors: Vec<egui::Color32>,
     pub navigation: Vec<egui::Rect>,
     pub settings_body: Option<egui::Rect>,
+    pub path_input: Option<egui::Rect>,
+    pub path_browse: Option<egui::Rect>,
     pub buttons: Vec<(K, egui::Rect)>,
 }
 pub struct CavalryKitApp {
@@ -116,6 +124,7 @@ pub struct CavalryKitApp {
     // and allocating on every frame while the search field is idle.
     cached_query: Option<(String, String, Filter)>,
     pub(crate) logo: egui::TextureHandle,
+    pub(crate) host_logo: egui::TextureHandle,
     pub(crate) settings: Settings,
     pub(crate) settings_draft: Option<Settings>,
     pub(crate) settings_section: super::settings_panel::Section,
@@ -166,6 +175,15 @@ impl CavalryKitApp {
             ),
             egui::TextureOptions::LINEAR,
         );
+        let host_icon = super::icon::host_icon();
+        let host_logo = ctx.load_texture(
+            "cavalry-host-icon",
+            egui::ColorImage::from_rgba_unmultiplied(
+                [host_icon.width as usize, host_icon.height as usize],
+                &host_icon.rgba,
+            ),
+            egui::TextureOptions::LINEAR,
+        );
         let mut app = Self {
             paths,
             filter: Filter::All,
@@ -189,6 +207,7 @@ impl CavalryKitApp {
             rows: vec![],
             cached_query: None,
             logo,
+            host_logo,
             settings: Settings::default(),
             settings_draft: None,
             settings_section: super::settings_panel::Section::General,
@@ -667,11 +686,14 @@ impl CavalryKitApp {
                 let sidebar_width = (area.width() * 0.28).clamp(256.0, 304.0);
                 let sidebar =
                     egui::Rect::from_min_size(area.min, egui::vec2(sidebar_width, area.height()));
-                ui.painter().rect_filled(sidebar, 0, p.panel);
-                ui.painter().vline(
-                    sidebar.right(),
-                    sidebar.y_range(),
+                let surface = sidebar.shrink(t::SM);
+                self.audit.rail_surface = Some(surface);
+                ui.painter().rect(
+                    surface,
+                    16,
+                    p.panel,
                     egui::Stroke::new(1.0_f32, p.line),
+                    egui::StrokeKind::Inside,
                 );
                 let left = sidebar.shrink(gap);
                 let right = egui::Rect::from_min_max(
@@ -861,6 +883,26 @@ impl CavalryKitApp {
         if light {
             app.settings.theme = crate::settings::Theme::Light;
         }
+        if screen == "mixed-names" {
+            app.library.scripts.clear();
+            for name in [
+                "Affine仿射工具.js",
+                "关键帧插值Keyframe.Tools.jsx",
+                "Replace素材路径.jsc",
+                "清理未使用的资产UnusedAssets.js",
+                "镜头与渲染Camera.Render.js",
+                "Shape曲线_路径.jsx",
+                "日本語タイミング.js",
+                "한글레이어정리.js",
+            ] {
+                app.library.scripts.push(crate::library::ScriptEntry {
+                    name: name.into(),
+                    group: None,
+                    path: format!("preview-library/{name}").into(),
+                    search_key: name.to_lowercase(),
+                });
+            }
+        }
         match screen {
             "stopped" => app.cavalry_running = false,
             "plugins" => app.filter = Filter::Plugins,
@@ -1019,52 +1061,7 @@ mod tests {
         assert!(app.audit.row_visuals.iter().all(|(_, a)| *a == 1.0));
     }
     #[test]
-    fn menu_escape_and_outside_click_close_without_a_destructive_action() {
-        let (ctx, mut app) = fixture();
-        app.library.plugins.push(crate::library::PluginEntry {
-            name: "Synthetic".into(),
-            author: None,
-            path: "synthetic/plugin".into(),
-            search_key: "synthetic".into(),
-        });
-        let mut tick = 0.0;
-        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-        for escape in [true, false] {
-            let more = app.audit.row_menu_buttons[0];
-            mouse_click(&ctx, &mut app, more.center(), &mut tick);
-            settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-            assert_eq!(app.audit.row_actions.len(), 1);
-            if escape {
-                tick += 0.1;
-                let _ = ctx.run(
-                    egui::RawInput {
-                        time: Some(tick),
-                        screen_rect: Some(egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            egui::vec2(900.0, 620.0),
-                        )),
-                        events: vec![egui::Event::Key {
-                            key: egui::Key::Escape,
-                            physical_key: Some(egui::Key::Escape),
-                            pressed: true,
-                            repeat: false,
-                            modifiers: egui::Modifiers::NONE,
-                        }],
-                        ..Default::default()
-                    },
-                    |ctx| app.draw(ctx),
-                );
-            } else {
-                mouse_click(&ctx, &mut app, egui::pos2(890.0, 610.0), &mut tick);
-            }
-            settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-            assert!(app.audit.row_actions.is_empty());
-            assert!(app.confirm_uninstall.is_none());
-            assert!(app.busy.is_none());
-        }
-    }
-    #[test]
-    fn opening_settings_closes_a_row_popup_instead_of_leaving_active_actions_above_the_modal() {
+    fn decorative_dots_have_no_action_or_popup_and_remove_requires_confirmation() {
         let (ctx, mut app) = fixture();
         app.library.scripts.push(crate::library::ScriptEntry {
             name: "Synthetic.js".into(),
@@ -1074,14 +1071,35 @@ mod tests {
         });
         let mut tick = 0.0;
         settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-        let more = app.audit.row_menu_buttons[0];
-        mouse_click(&ctx, &mut app, more.center(), &mut tick);
+        let dot = app.audit.row_decorations[0];
+        mouse_click(&ctx, &mut app, dot.center(), &mut tick);
+        assert!(app.selected_row.is_none());
+        assert!(app.confirm_uninstall.is_none());
+        assert!(!ctx.memory(|m| m.any_popup_open()));
+        let (_, remove) = app.audit.row_actions[0];
+        mouse_click(&ctx, &mut app, remove.center(), &mut tick);
+        assert_eq!(
+            app.confirm_uninstall.as_deref(),
+            Some(std::path::Path::new("synthetic/a.js"))
+        );
+        assert!(app.busy.is_none());
+    }
+    #[test]
+    fn settings_modal_blocks_the_restored_direct_row_actions() {
+        let (ctx, mut app) = fixture();
+        app.library.scripts.push(crate::library::ScriptEntry {
+            name: "Synthetic.js".into(),
+            group: None,
+            path: "synthetic/a.js".into(),
+            search_key: "synthetic.js".into(),
+        });
+        let mut tick = 0.0;
         settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-        assert_eq!(app.audit.row_actions.len(), 1);
+        let (_, remove) = app.audit.row_actions[0];
         app.open_settings();
         tick += 0.01;
         let _ = render(&ctx, &mut app, [900.0, 620.0], tick);
-        assert!(app.audit.row_actions.is_empty());
+        mouse_click(&ctx, &mut app, remove.center(), &mut tick);
         assert!(app.settings_draft.is_some());
         assert!(app.confirm_uninstall.is_none());
     }
@@ -1098,7 +1116,7 @@ mod tests {
         settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
         let hit = app.audit.row_hits[0];
         let surface = app.audit.row_visuals[0].0;
-        let more = app.audit.row_menu_buttons[0];
+        let more = app.audit.row_actions[0];
         let point = hit.center();
         for i in 0..20 {
             tick += 1.0 / 60.0;
@@ -1115,13 +1133,122 @@ mod tests {
                 |ctx| app.draw(ctx),
             );
             assert_eq!(hit, app.audit.row_hits[0]);
-            assert_eq!(more, app.audit.row_menu_buttons[0]);
+            assert_eq!(more, app.audit.row_actions[0]);
             if i == 19 {
                 assert_eq!(app.audit.row_visuals[0].0, hit);
                 assert!(surface.left() > hit.left());
             }
         }
         assert!(app.confirm_uninstall.is_none());
+    }
+    #[test]
+    fn toolbar_aligns_to_card_and_sidebar_is_an_inset_rounded_surface() {
+        let (ctx, mut app) = fixture();
+        let mut tick = 0.0;
+        for count in [1, 100] {
+            app.replace_library(Library::default());
+            for i in 0..count {
+                app.library.scripts.push(crate::library::ScriptEntry {
+                    name: format!("Letter字形{i}.js"),
+                    group: None,
+                    path: format!("synthetic/{i}.js").into(),
+                    search_key: format!("letter{i}"),
+                });
+            }
+            for size in [[720.0, 496.0], [1120.0, 760.0]] {
+                settle(&ctx, &mut app, size, &mut tick);
+                let row = app.audit.row_visuals[0].0;
+                let search = app.audit.search.unwrap();
+                let refresh = app.audit.refresh.unwrap();
+                assert!((search.left() - row.left()).abs() < 0.1);
+                assert!(
+                    (refresh.right() - row.right()).abs() < 0.1,
+                    "toolbar right {refresh:?} row {row:?}"
+                );
+                let surface = app.audit.rail_surface.unwrap();
+                assert!(surface.left() > 0.0 && surface.top() > 0.0 && surface.bottom() < size[1]);
+                let text = app.audit.status_text.unwrap();
+                let badge = app.audit.status.unwrap();
+                assert!((text.center().y - badge.center().y).abs() < 0.1);
+                assert!((badge.right() - text.right() - 10.0).abs() < 0.1);
+                let (title, detail) = app.audit.row_text_ink[0];
+                assert!((detail.top() - title.bottom() - t::XS).abs() < 0.1);
+                assert!((title.union(detail).center().y - row.center().y).abs() < 0.1);
+                for rect in &app.audit.row_accent {
+                    assert!(rect.top() >= row.top() + 7.9 || rect.top() > row.bottom());
+                }
+            }
+        }
+    }
+    #[test]
+    fn row_reveal_only_changes_opacity_never_disabled_gray_tint() {
+        for theme in [Theme::Cavalry, Theme::Light] {
+            let (ctx, mut app) = fixture();
+            app.settings.theme = theme;
+            app.library.scripts.push(crate::library::ScriptEntry {
+                name: "Mixed 字形.js".into(),
+                group: None,
+                path: "synthetic/a.js".into(),
+                search_key: "mixed".into(),
+            });
+            let mut tick = 0.0;
+            settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+            app.filter = Filter::Scripts;
+            tick += 1.0;
+            let _ = render(&ctx, &mut app, [900.0, 620.0], tick);
+            for dt in [0.03, 0.07, 0.12, 0.18, 0.24, 0.32, 0.40, 0.80] {
+                let output = render(&ctx, &mut app, [900.0, 620.0], tick + dt);
+                let (rect, alpha) = app.audit.row_visuals[0];
+                let shape = output
+                    .shapes
+                    .iter()
+                    .find_map(|s| {
+                        if let egui::Shape::Rect(r) = &s.shape {
+                            if (r.rect.min - rect.min).length() < 0.1
+                                && (r.rect.max - rect.max).length() < 0.1
+                            {
+                                Some(r)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("actual row background shape");
+                assert_eq!(
+                    shape.fill,
+                    app.p().panel.gamma_multiply(alpha),
+                    "gray disabled tint must not contaminate the reveal: {theme:?} {dt}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn program_location_field_and_browse_keep_their_row_inside_small_modals() {
+        for language in Language::ALL {
+            for theme in [Theme::Cavalry, Theme::Light] {
+                let (ctx, mut app) = fixture();
+                app.settings.language = language;
+                app.settings.theme = theme;
+                app.open_settings();
+                app.settings_section = super::super::settings_panel::Section::Cavalry;
+                app.settings_draft.as_mut().unwrap().cavalry_path =
+                    "synthetic/长名称/Application/".repeat(20);
+                let mut tick = 0.0;
+                settle(&ctx, &mut app, [720.0, 496.0], &mut tick);
+                let field = app.audit.path_input.unwrap();
+                let browse = app.audit.path_browse.unwrap();
+                let body = app.audit.settings_body.unwrap();
+                assert!(
+                    body.contains_rect(field) && body.contains_rect(browse),
+                    "{language:?} {body:?} {field:?} {browse:?}"
+                );
+                assert!((field.center().y - browse.center().y).abs() < 0.5);
+                assert!(field.right() + t::SM <= browse.left() + 0.5);
+                assert!(browse.right() <= body.right() - t::MD + 0.5);
+            }
+        }
     }
     fn fixture() -> (egui::Context, CavalryKitApp) {
         let ctx = egui::Context::default();
@@ -1622,7 +1749,7 @@ mod tests {
         }
     }
     #[test]
-    fn three_dot_menu_keeps_safe_and_danger_actions_separate_and_confirmed() {
+    fn direct_actions_and_decoration_stay_separate_in_all_languages() {
         for language in Language::ALL {
             let (ctx, mut app) = fixture();
             app.settings.language = language;
@@ -1633,44 +1760,17 @@ mod tests {
                 group: None,
             });
             let mut tick = 0.0;
-            settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-            assert!(
-                app.audit.row_actions.is_empty(),
-                "actions must be in the menu, not on the row"
-            );
-            let more = app.audit.row_menu_buttons[0];
-            assert_eq!(more.size(), egui::Vec2::splat(t::CONTROL));
-            let row = app.audit.row_hits[0];
-            mouse_click(
-                &ctx,
-                &mut app,
-                row.left_center() + egui::vec2(60.0, 0.0),
-                &mut tick,
-            );
-            assert!(app.confirm_uninstall.is_none());
-            assert!(app.audit.row_actions.is_empty());
-            mouse_click(&ctx, &mut app, more.center(), &mut tick);
-            settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-            assert_eq!(app.audit.row_actions.len(), 1);
+            settle(&ctx, &mut app, [720.0, 496.0], &mut tick);
             let (show, remove) = app.audit.row_actions[0];
+            let dots = app.audit.row_decorations[0];
             for rect in [show, remove] {
-                assert!(rect.width() >= 40.0 && rect.height() >= 40.0);
-                assert!(ctx.screen_rect().contains_rect(rect));
+                assert_eq!(rect.size(), egui::Vec2::splat(t::CONTROL));
+                assert!(app.audit.library.unwrap().contains_rect(rect));
             }
-            assert!(
-                show.bottom() + t::SM <= remove.top(),
-                "danger action needs vertical separation"
-            );
-            assert!(app.confirm_uninstall.is_none());
-            mouse_click(&ctx, &mut app, remove.center(), &mut tick);
-            assert_eq!(
-                app.confirm_uninstall.as_deref(),
-                Some(std::path::Path::new("synthetic/Example.js"))
-            );
-            assert!(
-                app.busy.is_none(),
-                "menu must only open confirmation, never uninstall directly"
-            );
+            assert!(show.right() + t::MD <= remove.left());
+            assert!(remove.right() + t::SM <= dots.left());
+            assert_eq!(show.center().y, dots.center().y);
+            assert_eq!(remove.center().y, dots.center().y);
         }
     }
     #[test]
@@ -1710,9 +1810,10 @@ mod tests {
                         .map(|row| t::category(p, matches!(row, Row::Plugin(_))).color)
                         .collect();
                     assert_eq!(app.audit.row_colors, expected);
-                    assert!(app.audit.row_actions.is_empty());
-                    for more in &app.audit.row_menu_buttons {
-                        assert_eq!(more.size(), egui::Vec2::splat(t::CONTROL));
+                    assert_eq!(app.audit.row_actions.len(), n);
+                    for (show, remove) in &app.audit.row_actions {
+                        assert_eq!(show.size(), egui::Vec2::splat(t::CONTROL));
+                        assert_eq!(remove.size(), show.size());
                     }
                     app.search = "no matching object".into();
                     tick += 1.0;

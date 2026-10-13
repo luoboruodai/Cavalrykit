@@ -53,16 +53,27 @@ impl CavalryKitApp {
                     (Section::Installation, K::BehaviorSection, Icon::Import),
                     (Section::Cavalry, K::CavalrySection, Icon::Cavalry),
                 ] {
-                    if t::nav_button(
+                    let r = t::nav_button(
                         ui,
                         lang.tr(key),
                         icon,
                         Some(self.settings_section == section),
                         None,
                         p,
-                    )
-                    .clicked()
-                    {
+                    );
+                    if section == Section::Cavalry {
+                        let rect = Rect::from_center_size(
+                            Pos2::new(r.rect.left() + 18.0, r.rect.center().y),
+                            Vec2::splat(20.0),
+                        );
+                        ui.painter().image(
+                            self.host_logo.id(),
+                            rect,
+                            Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                    if r.clicked() {
                         self.settings_section = section;
                     }
                 }
@@ -253,42 +264,93 @@ impl CavalryKitApp {
                                                     p,
                                                 );
                                                 ui.add_space(t::MD);
-                                                egui::Frame::new()
-                                                    .fill(p.panel)
-                                                    .corner_radius(6)
-                                                    .inner_margin(t::MD)
-                                                    .show(ui, |ui| {
-                                                        hint(ui, lang.tr(K::SafetyHint), p);
-                                                    });
+                                                hint(ui, lang.tr(K::SafetyHint), p);
                                             }
                                             Section::Cavalry => {
-                                                label(ui, lang.tr(K::AppPathLabel), p);
-                                                ui.add(
-                                                    egui::TextEdit::singleline(
-                                                        &mut draft.cavalry_path,
+                                                ui.horizontal(|ui| {
+                                                    let (rect, _) = ui.allocate_exact_size(
+                                                        Vec2::splat(28.0),
+                                                        egui::Sense::hover(),
+                                                    );
+                                                    ui.painter().image(
+                                                        self.host_logo.id(),
+                                                        rect,
+                                                        Rect::from_min_max(
+                                                            Pos2::ZERO,
+                                                            Pos2::new(1.0, 1.0),
+                                                        ),
+                                                        egui::Color32::WHITE,
+                                                    );
+                                                    let title = ui.painter().layout_no_wrap(
+                                                        lang.tr(K::AppPathLabel).into(),
+                                                        t::medium(13.0),
+                                                        p.text,
+                                                    );
+                                                    let (rect, _) = ui.allocate_exact_size(
+                                                        Vec2::new(title.size().x, 28.0),
+                                                        egui::Sense::hover(),
+                                                    );
+                                                    ui.painter().galley(
+                                                        t::centered_ink(rect, &title),
+                                                        title,
+                                                        p.text,
+                                                    );
+                                                });
+                                                ui.add_space(t::SM);
+                                                let button_width = ui
+                                                    .painter()
+                                                    .layout_no_wrap(
+                                                        lang.tr(K::Browse).into(),
+                                                        t::medium(13.0),
+                                                        p.text,
                                                     )
-                                                    .id_salt("cavalry-path")
-                                                    .background_color(p.surface)
-                                                    .hint_text(t::text(
-                                                        lang.tr(K::AutoDetect),
-                                                        14.0,
-                                                        p.muted,
-                                                    ))
-                                                    .desired_width(f32::INFINITY)
-                                                    .margin(egui::Margin::symmetric(8, 8)),
+                                                    .size()
+                                                    .x
+                                                    + 2.0 * t::MD;
+                                                let button_width = button_width.max(64.0);
+                                                let (row, _) = ui.allocate_exact_size(
+                                                    Vec2::new(ui.available_width(), t::CONTROL),
+                                                    egui::Sense::hover(),
                                                 );
-                                                if t::button(
-                                                    ui,
+                                                let field = Rect::from_min_max(
+                                                    row.min,
+                                                    row.max - Vec2::new(button_width + t::SM, 0.0),
+                                                );
+                                                let mut field_ui = ui.new_child(
+                                                    egui::UiBuilder::new()
+                                                        .max_rect(field)
+                                                        .id_salt("program-location-field"),
+                                                );
+                                                t::path_field(
+                                                    &mut field_ui,
+                                                    &mut draft.cavalry_path,
+                                                    lang.tr(K::AutoDetect),
+                                                    lang.tr(K::AppPathLabel),
+                                                    p,
+                                                );
+                                                self.audit.path_input = Some(field);
+                                                let button = Rect::from_min_max(
+                                                    Pos2::new(field.right() + t::SM, row.top()),
+                                                    row.max,
+                                                );
+                                                let mut button_ui = ui.new_child(
+                                                    egui::UiBuilder::new()
+                                                        .max_rect(button)
+                                                        .id_salt("program-browse"),
+                                                );
+                                                let browse_response = t::button(
+                                                    &mut button_ui,
                                                     lang.tr(K::Browse),
                                                     t::Button::Secondary,
                                                     p,
-                                                )
-                                                .clicked()
-                                                {
+                                                );
+                                                self.audit.path_browse = Some(browse_response.rect);
+                                                if browse_response.clicked() {
                                                     browse = true;
                                                 }
+                                                ui.add_space(t::SM);
                                                 hint(ui, lang.tr(K::PathHint), p);
-                                                ui.add_space(t::LG);
+                                                ui.add_space(t::MD);
                                                 hint(ui, lang.tr(K::SettingsLocal), p);
                                             }
                                         }
@@ -300,15 +362,7 @@ impl CavalryKitApp {
             t::footer(ui, |ui| {
                 ui.add_enabled_ui(can_save, |ui| {
                     let label = lang.tr(if saving { K::SaveBusy } else { K::Save });
-                    let width = ui
-                        .painter()
-                        .layout_no_wrap(label.into(), t::medium(14.0), p.text)
-                        .size()
-                        .x
-                        + 18.0
-                        + t::SM
-                        + 2.0 * t::MD;
-                    let r = t::soft_action(ui, label, Icon::Check, t::category(p, false), p, width);
+                    let r = t::save_action(ui, label, p);
                     self.record(K::Save, &r);
                     save = r.clicked();
                 });
@@ -316,7 +370,7 @@ impl CavalryKitApp {
                     let r = t::button(ui, lang.tr(K::Cancel), t::Button::Secondary, p);
                     self.record(K::Cancel, &r);
                     cancel = r.clicked();
-                    let r = t::button(ui, lang.tr(K::ResetDefaults), t::Button::Quiet, p)
+                    let r = t::text_action(ui, lang.tr(K::ResetDefaults), p)
                         .on_hover_text(lang.tr(K::ResetHint));
                     self.record(K::ResetDefaults, &r);
                     reset = r.clicked();

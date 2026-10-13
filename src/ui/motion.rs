@@ -158,9 +158,54 @@ pub fn settle(t: f32) -> f32 {
     1.0 + 2.1 * x.powi(3) + 1.1 * x.powi(2)
 }
 
+/// The only intentionally repeating idle effect: a small running indicator, capped at 12.5Hz.
+/// Background/minimized/reduced-motion/stopped/disabled states request no pulse frames.
+pub fn status_breath(ctx: &Context, running: bool, enabled: bool) -> f32 {
+    if !running
+        || !enabled
+        || ctx.style().animation_time == 0.0
+        || !ctx.input(|i| i.focused && i.viewport().minimized != Some(true))
+    {
+        return 0.5;
+    }
+    ctx.request_repaint_after(std::time::Duration::from_millis(80));
+    let t = ctx.input(|i| i.time) as f32;
+    0.5 - 0.5 * (t * std::f32::consts::TAU / 3.2).cos()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn status_breath_is_bounded_and_pauses_in_stopped_background_or_reduced_motion() {
+        let ctx = Context::default();
+        let mut values = Vec::new();
+        for (t, running, focused, reduced) in [
+            (0.0, true, true, false),
+            (0.8, true, true, false),
+            (1.6, true, true, false),
+            (2.4, true, false, false),
+            (3.2, false, true, false),
+            (4.0, true, true, true),
+        ] {
+            ctx.style_mut(|s| s.animation_time = if reduced { 0.0 } else { 0.18 });
+            let out = ctx.run(
+                egui::RawInput {
+                    time: Some(t),
+                    focused,
+                    ..Default::default()
+                },
+                |ctx| values.push(status_breath(ctx, running, true)),
+            );
+            let delay = out.viewport_output[&egui::ViewportId::ROOT].repaint_delay;
+            if !running || !focused || reduced {
+                assert_eq!(values.last(), Some(&0.5));
+            } else if t > 0.0 {
+                assert!(delay >= std::time::Duration::from_millis(60));
+            }
+        }
+        assert!(values[0] < values[1] && values[1] < values[2]);
+    }
     #[test]
     fn modal_exit_starts_at_the_current_value_and_reopening_replays_entrance() {
         let ctx = Context::default();
