@@ -1,14 +1,16 @@
-//! Deterministic, platform-specific icon construction from the original raster artwork.
+//! Raster helpers and dimensions for the approved platform-specific icon sources.
 //! Pixel canvas sizes and optical artwork size are deliberately separate.
 use image::{imageops, Rgba, RgbaImage};
 
 pub const MAC_CANVAS: u32 = 1024;
-// Target the 206/256 opaque tile footprint measured in the local macOS Terminal icon.
-// The source has a 1px antialiased fringe: 830px total artwork yields an 824px opaque tile.
+// The approved macOS master uses an 824px tile in a 1024px canvas.
+// Generic legacy raster helpers below remain separate from approved frame assembly.
 // This is an optical alignment choice, not an Apple-mandated pixel measurement.
 pub const MAC_OPAQUE_TILE: u32 = 824;
 pub const MAC_ARTWORK: u32 = 830;
-pub const WINDOWS_SIZES: [u32; 15] = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 256];
+pub const WINDOWS_SIZES: [u32; 18] = [
+    16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 144, 160, 192, 256,
+];
 
 /// Trim only fully transparent external margins; never crop the logo or black tile.
 pub fn trim_transparent(image: &RgbaImage) -> RgbaImage {

@@ -4,6 +4,8 @@
 
 ## 中文
 
+**build17最新调整**：应用已确认的 A「石墨柔光」图标方向；保留上传图形构图，独立重建可缩放线条并对 Windows 小尺寸做像素覆盖/对齐修正。Windows ICO 改为18档独立资源，macOS ICNS与应用内品牌图分开处理。正式包应用前保留源帧、hash和用户库/偏好基线，Windows实机DPI与系统缓存仍需单独验收。
+
 **build16最新调整**：行右侧显示/卸载/装饰三点同步响应整行悬停，热区保持不动；程序位置统一为线性图标。以深灰形式为锚点，专项调整明亮模式取消按钮、结果计数和运行状态框的灰度/材质，保留焦点与语义色。
 
 **延续build15的调整**：独立圆角侧栏、字形光学居中、搜索/刷新与卡片宽度对齐；恢复显示/卸载图标，三点只做弱灰装饰。入场不再叠加disabled灰化；完整内容字体统一中英文件名基线（安装包会增大）。运行绿点在前台轻呼吸，减少动效/后台暂停。设置保存去图标、重置去底板，安全说明降为小字，程序位置页统一路径/浏览/图标。
@@ -26,9 +28,9 @@
 - 左侧品牌同行状态徽章；安装后可选择重启/打开 Cavalry，也可稍后。只请求正常退出，保留保存提示，绝不强制终止进程。
 - 设置重设计为四个分类页，主题以卡片预览，支持实时预览与取消、界面缩放、减少动效、返回自动刷新、重启提示策略、可选 Cavalry 路径。
 - 安装覆盖暂存/回滚、同批重名冲突、递归目标/跨平台路径穿越保护。
-- 修正 macOS 图标视觉大小，完整 Retina ICNS；Windows 15 档内嵌 ICO、静态 VC++ 运行库与固定路径升级安装器。
+- 修正 macOS 图标视觉大小，完整 Retina ICNS；Windows 18 档内嵌 ICO、静态 VC++ 运行库与固定路径升级安装器。
 
-macOS 应用版本 **0.1.1 / build 16**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
+macOS 应用版本 **0.1.1 / build 17**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
 
 **验证边界**：Windows 真实 Cavalry、显卡/多屏拖窗、混合 DPI、任务栏缓存的人工验收仍延期；CI 不等价于这些体验测试。安全重启自动测试使用模拟进程，不对用户未保存工程发起退出。不能承诺所有环境绝对无 bug 或零卡顿。
 
@@ -57,7 +59,7 @@ Performance and usability update: background I/O, virtualized library, bounded r
 
 Settings support preview/cancel, scale, reduced motion, refresh-on-focus and restart policy. After successful installation, choose a normal Cavalry restart or do it later. Save your project first; cancellation, timeouts and multiple instances never trigger forced termination or duplicate launches.
 
-Includes staged replacement/rollback, recursive-target and cross-platform archive-path safeguards, corrected macOS optical icon margins, 15 Windows ICO sizes, static VC++ runtime and an in-place per-user Windows upgrader.
+Includes staged replacement/rollback, recursive-target and cross-platform archive-path safeguards, corrected macOS optical icon margins, 18 Windows ICO sizes, static VC++ runtime and an in-place per-user Windows upgrader.
 
 The workspace retains the left-hand import area and right-hand list filters/search without duplicate headings. Unified blue-charcoal/white surfaces, compact green actions, segmented filters and quiet row cards replace heavy outlines. Finite, interruptible choreography includes eased indicator travel, decorative drop settling and staged modal/content reveal; background clicks are blocked immediately and reduced motion is instant. Settings now use four focused pages and visual theme cards. Regional SC/JP/KR fonts replace the shared Japanese UI subset. macOS bundle build: 16.
 

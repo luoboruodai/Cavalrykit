@@ -1,13 +1,15 @@
-use cavalrykit::icon_assets::{
-    mac_icon, resize_square, trim_transparent, MAC_CANVAS, MAC_OPAQUE_TILE, WINDOWS_SIZES,
-};
+use cavalrykit::icon_assets::{resize_square, MAC_CANVAS, MAC_OPAQUE_TILE, WINDOWS_SIZES};
 use image::RgbaImage;
 
 fn rgba(bytes: &[u8]) -> RgbaImage {
     image::load_from_memory(bytes).unwrap().to_rgba8()
 }
-fn source() -> RgbaImage {
-    trim_transparent(&rgba(include_bytes!("../assets/icon-source.ico")))
+fn frame(kind: &str, size: u32) -> Vec<u8> {
+    std::fs::read(format!(
+        "{}/assets/icon-frames/{kind}/{size}.png",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
 }
 fn bounds(im: &RgbaImage, threshold: u8) -> (u32, u32, u32, u32) {
     let (mut l, mut t, mut r, mut b) = (im.width(), im.height(), 0, 0);
@@ -52,18 +54,27 @@ fn mac_canvas_and_opaque_tile_have_separate_sizes() {
 }
 
 #[test]
-fn generated_assets_match_original_artwork_reproducibly() {
-    let art = source();
-    assert_eq!(
-        resize_square(&art, 256),
-        rgba(include_bytes!("../assets/icon.png"))
-    );
-    let mac = mac_icon(&art);
-    assert_eq!(mac, rgba(include_bytes!("../assets/icon-macos.png")));
-    assert_eq!(
-        resize_square(&mac, 256),
-        rgba(include_bytes!("../assets/icon-macos-window.png"))
-    );
+fn runtime_images_match_the_approved_platform_sources() {
+    for (bytes, kind, size) in [
+        (include_bytes!("../assets/icon.png").as_slice(), "app", 256),
+        (
+            include_bytes!("../assets/icon-window.png").as_slice(),
+            "windows",
+            256,
+        ),
+        (
+            include_bytes!("../assets/icon-macos.png").as_slice(),
+            "macos",
+            1024,
+        ),
+        (
+            include_bytes!("../assets/icon-macos-window.png").as_slice(),
+            "macos",
+            256,
+        ),
+    ] {
+        assert_eq!(bytes, frame(kind, size));
+    }
 }
 
 #[test]
@@ -73,7 +84,6 @@ fn windows_ico_contains_all_target_sizes_with_correct_rgba_pixels() {
     let u32_at = |i| u32::from_le_bytes(bytes[i..i + 4].try_into().unwrap()) as usize;
     assert_eq!((u16_at(0), u16_at(2)), (0, 1));
     assert_eq!(u16_at(4), WINDOWS_SIZES.len());
-    let art = source();
     for (i, size) in WINDOWS_SIZES.into_iter().enumerate() {
         let entry = 6 + i * 16;
         let dimension = |n| if bytes[n] == 0 { 256 } else { bytes[n] as u32 };
@@ -82,7 +92,11 @@ fn windows_ico_contains_all_target_sizes_with_correct_rgba_pixels() {
         let length = u32_at(entry + 8);
         let offset = u32_at(entry + 12);
         let frame = rgba(&bytes[offset..offset + length]);
-        assert_eq!(frame, resize_square(&art, size), "wrong pixels at {size}px");
+        assert_eq!(
+            frame,
+            rgba(&self::frame("windows", size)),
+            "wrong approved pixels at {size}px"
+        );
     }
 }
 
@@ -97,4 +111,66 @@ fn mac_dock_padding_does_not_shrink_the_in_app_brand_tile() {
     let padded = rgba(include_bytes!("../assets/icon-macos-window.png"));
     assert_eq!(bounds(&padded, 128), (25, 25, 231, 231));
     assert_ne!(brand.rgba, padded.into_raw());
+}
+
+#[test]
+fn mac_icns_keeps_every_approved_frame_without_resampling() {
+    let bytes = include_bytes!("../assets/icon.icns");
+    assert_eq!(&bytes[..4], b"icns");
+    let len = u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    assert_eq!(len, bytes.len());
+    let mut offset = 8;
+    for (tag, size) in [
+        (b"icp4", 16),
+        (b"icp5", 32),
+        (b"icp6", 64),
+        (b"ic07", 128),
+        (b"ic08", 256),
+        (b"ic09", 512),
+        (b"ic10", 1024),
+        (b"ic11", 32),
+        (b"ic12", 64),
+        (b"ic13", 256),
+        (b"ic14", 512),
+    ] {
+        assert_eq!(&bytes[offset..offset + 4], tag);
+        let size_bytes =
+            u32::from_be_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
+        assert_eq!(
+            &bytes[offset + 8..offset + size_bytes],
+            frame("macos", size)
+        );
+        offset += size_bytes;
+    }
+    assert_eq!(offset, bytes.len());
+}
+
+#[test]
+fn small_windows_frames_have_optical_coverage_not_a_master_resize() {
+    let master = rgba(&frame("windows", 256));
+    for size in [16, 20, 24, 32, 48] {
+        let optical = rgba(&frame("windows", size));
+        let resized = resize_square(&master, size);
+        assert_ne!(
+            optical, resized,
+            "{size}px lost independent optical rendering"
+        );
+        let bright = |image: &RgbaImage| {
+            image
+                .enumerate_pixels()
+                .filter(|(x, y, p)| {
+                    *x > size / 8
+                        && *x < size * 7 / 8
+                        && *y > size / 8
+                        && *y < size * 7 / 8
+                        && p[0] > 210
+                        && p[3] == 255
+                })
+                .count()
+        };
+        assert!(
+            bright(&optical) > bright(&resized),
+            "{size}px needs visible core stroke coverage"
+        );
+    }
 }

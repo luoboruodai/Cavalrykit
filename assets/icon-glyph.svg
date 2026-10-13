@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 256 256" fill="none">
+  <g stroke="#ffffff" stroke-linejoin="round">
+    <path id="rear-folder" stroke-width="4" stroke-linecap="butt" d="M60.5 208.8 L36.8 110.6 H87.6 C89.4 120.7 95.5 126.0 105.8 126.0 H112.0 M144.3 126.0 H159.1 L162.6 139.2"/>
+    <path id="front-folder" stroke-width="4.35" stroke-linejoin="miter" d="M189.8 139.0 H76.8 C66.8 139.0 60.5 145.5 60.5 155.2 V201.5 C60.5 213.1 66.9 222.0 77.4 222.0 H173.4 C183.8 222.0 189.8 213.4 189.8 202.6 Z"/>
+    <path id="check" stroke-width="6.0" stroke-linecap="round" d="M100.4 184.7 L119.8 199.9 L154.2 161.2"/>
+    <path id="arrow-curve" stroke-width="4.4" stroke-linecap="butt" d="M158.3 83.1 C136.7 89.9 126.0 108.4 128.0 130.1"/>
+    <path id="arrow-head" stroke-width="4.4" stroke-linecap="butt" d="M116.7 120.0 L128.0 130.1 L139.3 120.0"/>
+    <path id="plugin-outline" stroke-width="4.0" stroke-linecap="butt" d="M148.5 77.0 L131.7 53.0 C128.2 48.0 129.5 46.0 133.2 43.4 L147.8 33.8 C151.2 31.5 154.0 33.1 156.3 36.6 L184.0 78.8 L205.0 65.5 C208.0 63.5 210.3 65.0 212.6 68.3 L221.4 81.3 C224.2 85.4 223.2 88.1 219.9 90.5 L182.3 116.8 C178.8 119.0 176.0 117.0 173.8 113.7 L158.0 90.5"/>
+    <path id="plugin-cross" stroke-width="4.0" stroke-linecap="butt" d="M144.5 71.3 L168.5 55.0 M184.0 78.8 L201.0 103.0 M159.5 96.0 L184.0 78.8"/>
+  </g>
+</svg>

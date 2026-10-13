@@ -9,20 +9,17 @@ ARCH="$(uname -m)"
 [ "$ARCH" = "aarch64" ] && ARCH="arm64"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+# Reject stale generated bundles; never downsample away approved optical-size frames.
+cargo run --locked --example import_icon -- --check
 cargo build --release --locked
-# Always regenerate ICNS from the macOS master with optical margins; no stale icon cache in packaging.
-ICONSET="$WORK/icon.iconset"
-mkdir -p "$ICONSET"
-for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" assets/icon-macos.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    double=$((size * 2))
-    sips -z "$double" "$double" assets/icon-macos.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-done
+# iconutil must decode the approved ICNS before it is embedded in the app.
+ICNS_CHECK="$WORK/iconset-check.iconset"
+iconutil -c iconset assets/icon.icns -o "$ICNS_CHECK" >/dev/null
 APP="$WORK/dmg/CavalryKit.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" dist
 cp target/release/cavalrykit "$APP/Contents/MacOS/CavalryKit"
 cp packaging/Info.plist "$APP/Contents/Info.plist"
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/CavalryKitIcon.icns"
+cp assets/icon.icns "$APP/Contents/Resources/CavalryKitIcon.icns"
 cp packaging/THIRD-PARTY-NOTICES.txt "$APP/Contents/Resources/THIRD-PARTY-NOTICES.txt"
 chmod +x "$APP/Contents/MacOS/CavalryKit"
 codesign --force --sign - "$APP"

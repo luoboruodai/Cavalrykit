@@ -13,7 +13,7 @@ packaging/build-mac.sh
 ```
 
 输出 `dist/CavalryKit.app` 和架构命名的 DMG（Apple Silicon 为 `CavalryKit-0.1.1-mac-arm64.dmg`）。
-脚本每次由 `assets/icon-macos.png` 重建全部 ICNS 尺寸，进行 ad-hoc 签名及验证，并打印 SHA-256。
+脚本先检查 `assets/icon-frames/`、`assets/icon.ico` 与 `assets/icon.icns` 的批准帧，使用 `iconutil` 解码校验后直接嵌入 ICNS，进行 ad-hoc 签名及验证，并打印 SHA-256。
 这是本地签名，不是 Apple Developer ID 签名/公证。正式分发的公证需要另行配置开发者凭据，不能把凭据提交到仓库。
 安装时退出原应用，替换 Applications 中同一 `CavalryKit.app`，再推出旧镜像；不要改名并排安装。
 

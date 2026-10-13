@@ -2,6 +2,11 @@
 
 ## 0.1.1 — 2026-10-13
 
+### build 17 / 已确认图标方向与 Windows 高清化
+- Apply the approved A “Graphite Halo” icon direction to CavalryKit’s app icon, in-app brand tile and platform resources.
+- Replace the single-master Windows icon pipeline with 18 independently rendered optical-size frames; preserve a separate macOS ICNS and app/window image path.
+- Add deterministic approved-frame checks, ICNS decoding checks and stale-source rejection before packaging.
+
 ### build 16 / 协同反馈与浅色材质
 - Coordinate row-end reveal/remove icons and decorative dots with the row hover timeline while keeping hit targets fixed.
 - Use one line-icon family for Program Location navigation and title; remove the old host-icon bitmap and texture.
@@ -68,7 +73,7 @@
 ### UI / 界面
 - Present all import results in a bounded modal dialog; keep the main layout stable.
 - Clip independent columns and bound long labels/details; support small windows.
-- Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
+- Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 18 Windows ICO frames.
 - Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 14.
 - Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
