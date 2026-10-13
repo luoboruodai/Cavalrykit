@@ -51,7 +51,7 @@ impl CavalryKitApp {
                     (Section::General, K::LanguageSection, Icon::Display),
                     (Section::Appearance, K::AppearanceSection, Icon::Palette),
                     (Section::Installation, K::BehaviorSection, Icon::Import),
-                    (Section::Cavalry, K::CavalrySection, Icon::Cavalry),
+                    (Section::Cavalry, K::CavalrySection, Icon::AppLocation),
                 ] {
                     let r = t::nav_button(
                         ui,
@@ -61,18 +61,6 @@ impl CavalryKitApp {
                         None,
                         p,
                     );
-                    if section == Section::Cavalry {
-                        let rect = Rect::from_center_size(
-                            Pos2::new(r.rect.left() + 18.0, r.rect.center().y),
-                            Vec2::splat(20.0),
-                        );
-                        ui.painter().image(
-                            self.host_logo.id(),
-                            rect,
-                            Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                            egui::Color32::WHITE,
-                        );
-                    }
                     if r.clicked() {
                         self.settings_section = section;
                     }
@@ -272,14 +260,11 @@ impl CavalryKitApp {
                                                         Vec2::splat(28.0),
                                                         egui::Sense::hover(),
                                                     );
-                                                    ui.painter().image(
-                                                        self.host_logo.id(),
-                                                        rect,
-                                                        Rect::from_min_max(
-                                                            Pos2::ZERO,
-                                                            Pos2::new(1.0, 1.0),
-                                                        ),
-                                                        egui::Color32::WHITE,
+                                                    super::icons::paint(
+                                                        ui.painter(),
+                                                        rect.shrink(4.0),
+                                                        Icon::AppLocation,
+                                                        p.muted,
                                                     );
                                                     let title = ui.painter().layout_no_wrap(
                                                         lang.tr(K::AppPathLabel).into(),

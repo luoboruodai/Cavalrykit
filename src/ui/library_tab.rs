@@ -100,9 +100,9 @@ impl CavalryKitApp {
             Pos2::new(filter_rect.right() + t::MD, toolbar.center().y - 14.0),
             Vec2::new(width, 28.0),
         );
-        t::count_badge(ui, badge, &label, tone);
+        let count_ink = t::count_badge(ui, badge, &label, tone, p);
         self.audit.count = Some(badge);
-        self.audit.count_color = Some(tone.color);
+        self.audit.count_color = Some(count_ink);
         self.audit.count_label = label;
 
         ui.add_space(t::MD);
@@ -254,9 +254,9 @@ impl CavalryKitApp {
                             self.audit
                                 .row_visuals
                                 .push((rect.translate(Vec2::new(0.0, dy)), row_reveal));
-                            self.audit
-                                .row_decorations
-                                .push(dots.translate(Vec2::new(0.0, dy)));
+                            self.audit.row_decorations.push(
+                                dots.translate(t::row_action_offset(hover) + Vec2::new(0.0, dy)),
+                            );
                             // A constant-height inset rail follows the surface instead of
                             // abruptly growing into the rounded corners on both axes.
                             let stripe = Rect::from_min_size(
@@ -357,6 +357,7 @@ impl CavalryKitApp {
                                         false,
                                         p,
                                         ready,
+                                        Some(hover),
                                     );
                                     let mut remove = ui.new_child(
                                         egui::UiBuilder::new()
@@ -370,8 +371,16 @@ impl CavalryKitApp {
                                         true,
                                         p,
                                         ready,
+                                        Some(hover),
                                     );
                                     self.audit.row_actions.push((reveal.rect, uninstall.rect));
+                                    self.audit.row_action_art.push((
+                                        t::action_glyph_rect(reveal.rect, Some(hover))
+                                            .translate(Vec2::new(0.0, dy)),
+                                        t::action_glyph_rect(uninstall.rect, Some(hover))
+                                            .translate(Vec2::new(0.0, dy)),
+                                    ));
+                                    self.audit.row_action_ink.push(t::row_action_ink(p, hover));
                                     if reveal.clicked() {
                                         paths::reveal_in_file_manager(path);
                                     }

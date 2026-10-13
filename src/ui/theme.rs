@@ -226,18 +226,48 @@ pub fn placeholder_ink(p: Palette) -> Color32 {
     readable(mix(p.muted, p.panel, 0.18), p.panel, 4.5)
 }
 
-pub fn count_badge(ui: &egui::Ui, rect: egui::Rect, label: &str, tone: Category) {
-    ui.painter().rect_filled(rect, 6, tone.tint);
-    let g = ui
-        .painter()
-        .layout_no_wrap(label.into(), medium(12.0), tone.color);
-    ui.painter().galley(centered_ink(rect, &g), g, tone.color);
+/// Neutral secondary surfaces mirror the dark hierarchy, not an outlined input.
+/// Light mode needs a little more gray mass; hard default outlines overemphasize badges.
+pub fn neutral_surface(p: Palette) -> Color32 {
+    if p.dark {
+        p.surface
+    } else {
+        mix(p.panel, p.raised, 0.72)
+    }
+}
+pub fn neutral_stroke(p: Palette) -> egui::Stroke {
+    if p.dark {
+        egui::Stroke::new(1.0_f32, p.line)
+    } else {
+        egui::Stroke::NONE
+    }
+}
+pub fn count_style(p: Palette, tone: Category) -> (Color32, Color32) {
+    let fill = if p.dark {
+        tone.tint
+    } else {
+        mix(p.raised, tone.color, 0.065)
+    };
+    (fill, readable(tone.color, fill, 4.5))
+}
+pub fn count_badge(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    label: &str,
+    tone: Category,
+    p: Palette,
+) -> Color32 {
+    let (fill, ink) = count_style(p, tone);
+    ui.painter().rect_filled(rect, 6, fill);
+    let g = ui.painter().layout_no_wrap(label.into(), medium(12.0), ink);
+    ui.painter().galley(centered_ink(rect, &g), g, ink);
     let r = ui.interact(
         rect,
         ui.make_persistent_id("result-count"),
         egui::Sense::hover(),
     );
     r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+    ink
 }
 /// A single vertical shortcut card; no second icon target overlays its label.
 pub fn shortcut(
@@ -497,13 +527,33 @@ pub fn content_font(size: f32) -> FontId {
         egui::FontFamily::Name(super::fonts::FAMILY_CONTENT.into()),
     )
 }
-/// Muted decorative dots are not a control and never appear in keyboard/accessibility targets.
+/// Row affordances share one finite timeline. Paint moves within stable hit targets.
+pub fn row_action_offset(progress: f32) -> Vec2 {
+    Vec2::new(-ROW_INSET * (1.0 - progress.clamp(0.0, 1.0)), 0.0)
+}
+pub fn action_glyph_rect(hit: egui::Rect, group_hover: Option<f32>) -> egui::Rect {
+    let progress = group_hover.unwrap_or(0.0).clamp(0.0, 1.0);
+    egui::Rect::from_center_size(
+        hit.center() + group_hover.map(row_action_offset).unwrap_or(Vec2::ZERO),
+        Vec2::splat(18.0 + 1.5 * progress),
+    )
+}
+pub fn row_action_ink(p: Palette, progress: f32) -> Color32 {
+    mix(p.muted, p.text, progress.clamp(0.0, 1.0) * 0.65)
+}
+/// Decoration only: no button, focus target, or independent animation clock.
 pub fn decorative_dots(painter: &egui::Painter, center: egui::Pos2, p: Palette, active: f32) {
-    let ink = mix(p.muted, p.panel, 0.55 - active * 0.10);
+    let active = active.clamp(0.0, 1.0);
+    let center = center + row_action_offset(active);
+    let ink = mix(p.muted, p.panel, 0.55 - active * 0.23);
     for y in [-4.0, 0.0, 4.0] {
         let c = center + Vec2::new(0.0, y);
-        painter.circle_filled(c, 1.7, ink.gamma_multiply(0.15));
-        painter.circle_filled(c, 0.9, ink);
+        painter.circle_filled(
+            c,
+            1.7 + 0.1 * active,
+            ink.gamma_multiply(0.15 + 0.05 * active),
+        );
+        painter.circle_filled(c, 0.9 + 0.15 * active, ink);
     }
 }
 pub fn font(size: f32) -> FontId {
@@ -676,6 +726,11 @@ pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui:
     } else {
         match kind {
             Button::Quiet | Button::QuietDanger => p.raised.gamma_multiply(hover),
+            Button::Secondary => mix(
+                neutral_surface(p),
+                p.raised,
+                (hover * 0.65 + press * 0.35).min(1.0),
+            ),
             _ => mix(p.surface, p.raised, (hover * 0.65 + press * 0.35).min(1.0)),
         }
     };
@@ -684,7 +739,7 @@ pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui:
     } else if danger && !matches!(kind, Button::QuietDanger) {
         egui::Stroke::new(1.0_f32, p.danger)
     } else if matches!(kind, Button::Secondary) {
-        egui::Stroke::new(1.0_f32, p.line)
+        neutral_stroke(p)
     } else {
         egui::Stroke::NONE
     };
@@ -875,7 +930,7 @@ pub fn icon_button(
     danger: bool,
     p: Palette,
 ) -> egui::Response {
-    icon_button_guarded(ui, label, icon, danger, p, true)
+    icon_button_guarded(ui, label, icon, danger, p, true, None)
 }
 pub fn icon_button_guarded(
     ui: &mut egui::Ui,
@@ -884,6 +939,7 @@ pub fn icon_button_guarded(
     danger: bool,
     p: Palette,
     interactive: bool,
+    group_hover: Option<f32>,
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(
         Vec2::splat(CONTROL),
@@ -910,7 +966,8 @@ pub fn icon_button_guarded(
         response.id.with("press"),
         ui.is_enabled() && interactive && response.is_pointer_button_down_on(),
     );
-    let color = mix(p.muted, if danger { p.danger } else { p.text }, hover);
+    let base = row_action_ink(p, group_hover.unwrap_or(0.0));
+    let color = mix(base, if danger { p.danger } else { p.text }, hover);
     ui.painter()
         .rect_filled(rect, RADIUS, p.raised.gamma_multiply(hover));
     if response.has_focus() {
@@ -923,7 +980,7 @@ pub fn icon_button_guarded(
     }
     super::icons::paint(
         ui.painter(),
-        egui::Rect::from_center_size(rect.center() + Vec2::new(0.0, press), Vec2::splat(18.0)),
+        action_glyph_rect(rect, group_hover).translate(Vec2::new(0.0, press)),
         icon,
         color,
     );
@@ -1037,18 +1094,15 @@ pub fn nav_button(
     } else {
         mix(p.muted, p.text, hover)
     };
-    // Program Location supplies the actual host app image in this reserved slot.
-    if !matches!(icon, super::icons::Icon::Cavalry) {
-        super::icons::paint(
-            ui.painter(),
-            egui::Rect::from_center_size(
-                egui::pos2(rect.left() + 18.0, rect.center().y),
-                Vec2::splat(16.0),
-            ),
-            icon,
-            if selected { p.accent_text } else { color },
-        );
-    }
+    super::icons::paint(
+        ui.painter(),
+        egui::Rect::from_center_size(
+            egui::pos2(rect.left() + 18.0, rect.center().y),
+            Vec2::splat(16.0),
+        ),
+        icon,
+        if selected { p.accent_text } else { color },
+    );
     let badge_width = badge
         .map(|n| {
             let g = ui
@@ -1169,6 +1223,73 @@ pub fn segmented(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn light_secondary_buttons_keep_dark_geometry_without_the_input_like_outline() {
+        let mut bounds = Vec::new();
+        for theme in [Theme::Cavalry, Theme::Light] {
+            let ctx = egui::Context::default();
+            crate::ui::fonts::setup(&ctx);
+            let settings = Settings {
+                theme,
+                ..Default::default()
+            };
+            apply_settings(&ctx, &settings);
+            let p = palette(&settings);
+            let mut rect = egui::Rect::NOTHING;
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    rect = button(ui, "取消", Button::Secondary, p).rect;
+                });
+            });
+            let shape = output
+                .shapes
+                .iter()
+                .find_map(|s| {
+                    if let egui::Shape::Rect(r) = &s.shape {
+                        if r.rect == rect {
+                            Some(r)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            bounds.push((rect.size(), shape.corner_radius));
+            assert_eq!(shape.fill, neutral_surface(p));
+            assert!(contrast(p.text, shape.fill) >= 4.5);
+            if theme == Theme::Cavalry {
+                assert_eq!(shape.stroke.width, 1.0);
+                assert_eq!(shape.fill, p.surface);
+            } else {
+                assert_eq!(shape.stroke.width, 0.0);
+                assert!(luminance(shape.fill) < luminance(p.panel));
+            }
+        }
+        assert_eq!(bounds[0], bounds[1]);
+    }
+    #[test]
+    fn group_glyph_motion_never_overflows_or_confuses_danger_feedback() {
+        for theme in [Theme::Cavalry, Theme::Light] {
+            let p = palette(&Settings {
+                theme,
+                ..Default::default()
+            });
+            let hit = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::splat(CONTROL));
+            for n in 0..=20 {
+                let progress = n as f32 / 20.0;
+                let glyph = action_glyph_rect(hit, Some(progress));
+                assert!(hit.shrink(4.0).contains_rect(glyph));
+                assert_ne!(
+                    row_action_ink(p, progress),
+                    p.danger,
+                    "row hover alone is not a destructive hover"
+                );
+            }
+            assert_eq!(action_glyph_rect(hit, None).center(), hit.center());
+        }
+    }
     #[test]
     fn reset_hover_has_no_filled_button_and_control_ink_is_optically_centered() {
         for theme in [Theme::Cavalry, Theme::Light] {

@@ -88,6 +88,8 @@ pub(crate) struct Audit {
     pub import_activated: bool,
     pub import_hover: f32,
     pub row_actions: Vec<(egui::Rect, egui::Rect)>,
+    pub row_action_art: Vec<(egui::Rect, egui::Rect)>,
+    pub row_action_ink: Vec<egui::Color32>,
     pub clear_search: Option<egui::Rect>,
     pub import_art: Option<egui::Rect>,
     pub import_title: Option<egui::Rect>,
@@ -124,7 +126,6 @@ pub struct CavalryKitApp {
     // and allocating on every frame while the search field is idle.
     cached_query: Option<(String, String, Filter)>,
     pub(crate) logo: egui::TextureHandle,
-    pub(crate) host_logo: egui::TextureHandle,
     pub(crate) settings: Settings,
     pub(crate) settings_draft: Option<Settings>,
     pub(crate) settings_section: super::settings_panel::Section,
@@ -175,15 +176,6 @@ impl CavalryKitApp {
             ),
             egui::TextureOptions::LINEAR,
         );
-        let host_icon = super::icon::host_icon();
-        let host_logo = ctx.load_texture(
-            "cavalry-host-icon",
-            egui::ColorImage::from_rgba_unmultiplied(
-                [host_icon.width as usize, host_icon.height as usize],
-                &host_icon.rgba,
-            ),
-            egui::TextureOptions::LINEAR,
-        );
         let mut app = Self {
             paths,
             filter: Filter::All,
@@ -207,7 +199,6 @@ impl CavalryKitApp {
             rows: vec![],
             cached_query: None,
             logo,
-            host_logo,
             settings: Settings::default(),
             settings_draft: None,
             settings_section: super::settings_panel::Section::General,
@@ -1250,6 +1241,124 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn row_hover_animates_both_actions_and_decoration_without_moving_their_targets() {
+        for theme in [Theme::Cavalry, Theme::Light] {
+            for reduce in [false, true] {
+                let (ctx, mut app) = fixture();
+                app.settings.theme = theme;
+                app.settings.reduce_motion = reduce;
+                app.library.scripts.push(crate::library::ScriptEntry {
+                    name: "Shared hover.js".into(),
+                    group: None,
+                    path: "synthetic/shared.js".into(),
+                    search_key: "shared hover.js".into(),
+                });
+                let mut tick = 0.0;
+                settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+                let targets = app.audit.row_actions[0];
+                let art = app.audit.row_action_art[0];
+                let dots = app.audit.row_decorations[0];
+                let ink = app.audit.row_action_ink[0];
+                let row = app.audit.row_hits[0];
+                let point = row.left_center() + egui::vec2(70.0, 0.0);
+                let start = tick;
+                let mut middle = false;
+                let mut x = art.0.center().x;
+                for frame in 0..=24 {
+                    tick = start + frame as f64 / 60.0;
+                    let _ = ctx.run(
+                        egui::RawInput {
+                            time: Some(tick),
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(900.0, 620.0),
+                            )),
+                            events: vec![egui::Event::PointerMoved(point)],
+                            ..Default::default()
+                        },
+                        |ctx| app.draw(ctx),
+                    );
+                    assert_eq!(targets, app.audit.row_actions[0]);
+                    let now = app.audit.row_action_art[0];
+                    for (hit, visual) in [(targets.0, now.0), (targets.1, now.1)] {
+                        assert!(hit.contains_rect(visual));
+                    }
+                    assert!(now.0.center().x >= x - 0.01);
+                    x = now.0.center().x;
+                    assert!(
+                        (now.0.center().x
+                            - art.0.center().x
+                            - (now.1.center().x - art.1.center().x))
+                            .abs()
+                            < 0.01
+                    );
+                    let dx = now.0.center().x - art.0.center().x;
+                    assert!(
+                        (app.audit.row_decorations[0].center().x - dots.center().x - dx).abs()
+                            < 0.01
+                    );
+                    middle |= dx > 0.01 && dx < t::ROW_INSET - 0.01;
+                    if reduce {
+                        assert!((dx - t::ROW_INSET).abs() < 0.01);
+                    }
+                }
+                assert_eq!(middle, !reduce);
+                assert_ne!(ink, app.audit.row_action_ink[0]);
+                assert!(app.audit.row_action_art[0].0.width() > art.0.width());
+                assert!(app.confirm_uninstall.is_none() && app.selected_row.is_none());
+                let _ = render(&ctx, &mut app, [900.0, 620.0], start + 1.0);
+                let _ = render(&ctx, &mut app, [900.0, 620.0], start + 1.2);
+                let output = render(&ctx, &mut app, [900.0, 620.0], start + 2.0);
+                assert!(
+                    output.viewport_output[&egui::ViewportId::ROOT].repaint_delay
+                        > Duration::from_secs(1),
+                    "settled group must not add idle animation"
+                );
+            }
+        }
+    }
+    #[test]
+    fn final_badges_use_the_tuned_material_and_legible_ink_in_both_themes() {
+        for theme in [Theme::Cavalry, Theme::Light] {
+            let (ctx, mut app) = fixture();
+            app.settings.theme = theme;
+            let mut tick = 0.0;
+            settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+            let out = render(&ctx, &mut app, [900.0, 620.0], tick + 1.0);
+            let p = app.p();
+            let painted = |rect: egui::Rect| {
+                out.shapes
+                    .iter()
+                    .find_map(|s| {
+                        if let egui::Shape::Rect(r) = &s.shape {
+                            if r.rect == rect {
+                                Some(r)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap()
+            };
+            let status = painted(app.audit.status.unwrap());
+            assert_eq!(status.fill, t::neutral_surface(p));
+            assert_eq!(status.stroke, t::neutral_stroke(p));
+            let count = painted(app.audit.count.unwrap());
+            let ink = app.audit.count_color.unwrap();
+            assert!(t::contrast(ink, count.fill) >= 4.5);
+            assert!(t::contrast(p.muted, status.fill) >= 4.5);
+            if theme == Theme::Cavalry {
+                assert_eq!(status.fill, p.surface);
+                assert_eq!(count.fill, t::category(p, false).tint);
+            } else {
+                assert_eq!(status.stroke.width, 0.0);
+                assert!(t::luminance(count.fill) < t::luminance(p.bg) - 0.08);
+            }
+        }
+    }
     fn fixture() -> (egui::Context, CavalryKitApp) {
         let ctx = egui::Context::default();
         super::super::fonts::setup(&ctx);
@@ -1768,7 +1877,7 @@ mod tests {
                 assert!(app.audit.library.unwrap().contains_rect(rect));
             }
             assert!(show.right() + t::MD <= remove.left());
-            assert!(remove.right() + t::SM <= dots.left());
+            assert!(remove.right() + t::XS <= dots.left());
             assert_eq!(show.center().y, dots.center().y);
             assert_eq!(remove.center().y, dots.center().y);
         }
@@ -1798,7 +1907,7 @@ mod tests {
                     app.search.clear();
                     settle(&ctx, &mut app, [720.0, 496.0], &mut tick);
                     let p = app.p();
-                    let color = t::category(p, filter == Filter::Plugins).color;
+                    let color = t::count_style(p, t::category(p, filter == Filter::Plugins)).1;
                     assert_eq!(app.audit.count_color, Some(color));
                     assert_eq!(
                         app.audit.count_label,

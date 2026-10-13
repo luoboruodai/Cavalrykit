@@ -1,12 +1,5 @@
 CavalryKit bundled resource notices
 
-Cavalry host application icon
-Third-party Cavalry application icon; not covered by the font licenses below.
-The small app icon is used only to identify the host in Program Location.
-It is not CavalryKit branding and does not imply endorsement or affiliation.
-All rights in the application icon remain with its owner.
-
-
 Roboto
 Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)
 Licensed under SIL Open Font License 1.1.

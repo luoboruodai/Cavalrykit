@@ -19,12 +19,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .ok_or("No offscreen GPU adapter")?;
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))?;
-    if args.iter().any(|a| a == "--motion") {
+    let row_demo = args.iter().any(|a| a == "--row-hover");
+    if row_demo || args.iter().any(|a| a == "--motion") {
         let ctx = egui::Context::default();
-        let mut app = CavalryKitApp::preview(&ctx, Language::Zh, "main");
+        let mut app = CavalryKitApp::preview(
+            &ctx,
+            Language::Zh,
+            if args.iter().any(|a| a == "--light") {
+                "light-main"
+            } else {
+                "main"
+            },
+        );
+        let size = if row_demo { [1120, 760] } else { [960, 660] };
+        let frame_count = if row_demo { 120 } else { 240 };
         let mut renderer = Renderer::new(&device, wgpu::TextureFormat::Rgba8Unorm, None, 1, false);
-        for frame in 0..240 {
-            let input = app.preview_motion_input(&ctx, frame);
+        for frame in 0..frame_count {
+            let input = if row_demo {
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1120.0, 760.0),
+                    )),
+                    time: Some(frame as f64 / 60.0),
+                    events: vec![egui::Event::PointerMoved(if (50..86).contains(&frame) {
+                        egui::pos2(580.0, 166.0)
+                    } else {
+                        egui::pos2(1100.0, 740.0)
+                    })],
+                    ..Default::default()
+                }
+            } else {
+                app.preview_motion_input(&ctx, frame)
+            };
             let pointer = input.events.iter().find_map(|e| {
                 if let egui::Event::PointerMoved(p) = e {
                     Some(*p)
@@ -54,11 +81,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &mut renderer,
                 &ctx,
                 result,
-                [960, 660],
+                size,
                 &std::path::Path::new(output).join(format!("motion-{frame:03}.png")),
             )?;
         }
-        println!("240 actual component frames at 30 fps in {output}");
+        println!("{frame_count} actual component frames at {} fps in {output}; synthetic input, not native evidence",if row_demo{60}else{30});
         return Ok(());
     }
     for (language, screen) in [

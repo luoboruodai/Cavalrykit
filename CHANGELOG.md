@@ -2,6 +2,12 @@
 
 ## 0.1.1 — 2026-10-13
 
+### build 16 / 协同反馈与浅色材质
+- Coordinate row-end reveal/remove icons and decorative dots with the row hover timeline while keeping hit targets fixed.
+- Use one line-icon family for Program Location navigation and title; remove the old host-icon bitmap and texture.
+- Tune Light secondary buttons/status surfaces and count badge density against the dark theme's geometry and hierarchy; retain explicit keyboard focus and readable semantic colors.
+- Extend actual-paint and motion regressions; verify Light in the unobscured installed main window, not only inside settings preview.
+
 ### build 15 / 细节与一致性
 - Add an inset rounded sidebar, ink-centered controls and balanced status padding with a bounded foreground-only breathing indicator.
 - Align search/refresh with resting list cards; repair the circular refresh arrow and soften the inset row accent.

@@ -42,8 +42,8 @@ impl CavalryKitApp {
         ui.painter().rect(
             status,
             14,
-            p.surface,
-            Stroke::new(1.0_f32, p.line),
+            t::neutral_surface(p),
+            t::neutral_stroke(p),
             egui::StrokeKind::Inside,
         );
         let pulse = super::motion::status_breath(ui.ctx(), self.cavalry_running, ui.is_enabled());

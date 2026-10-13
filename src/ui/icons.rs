@@ -18,7 +18,7 @@ pub enum Icon {
     Close,
     Display,
     Palette,
-    Cavalry,
+    AppLocation,
 }
 pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
     let c = rect.center();
@@ -149,10 +149,12 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
                 p.circle_filled(point(x, y), 1.5 * scale, color);
             }
         }
-        Icon::Cavalry => {
-            line((-7.0, 7.0), (0.0, -7.0));
-            line((0.0, -7.0), (7.0, 7.0));
-            line((-3.5, 1.0_f32), (3.5, 1.0_f32));
+        Icon::AppLocation => {
+            box_at(0.0, 0.0, 16.0, 14.0);
+            line((-6.0, -3.0), (6.0, -3.0));
+            line((-3.0, 2.0), (3.0, 2.0));
+            line((1.0, 0.0), (3.0, 2.0));
+            line((3.0, 2.0), (1.0, 4.0));
         }
     }
 }
@@ -237,7 +239,7 @@ mod tests {
             Icon::Close,
             Icon::Display,
             Icon::Palette,
-            Icon::Cavalry,
+            Icon::AppLocation,
         ] {
             for size in [16.0, 18.0, 20.0, 28.0] {
                 let slot = Rect::from_min_size(Pos2::new(40.0, 40.0), Vec2::splat(size));
