@@ -22,7 +22,7 @@ impl CavalryKitApp {
         let (mut save, mut cancel, mut reset, mut browse) = (false, false, false, false);
         let response = t::modal_state(ctx, "settings", p, 720.0, self.settings_closing, |ui| {
             let start = ui.cursor().top();
-            ui.label(t::heading(lang.tr(K::SettingsTitle), 22.0, p));
+            ui.label(t::heading(lang.tr(K::SettingsTitle), 20.0, p));
             ui.add(egui::Label::new(t::text(lang.tr(K::PreviewHint), 12.0, p.muted)).wrap());
             ui.add_space(t::MD);
             let header_height = ui.cursor().top() - start;
@@ -94,183 +94,221 @@ impl CavalryKitApp {
                                 0.20,
                             );
                             let page = super::motion::phase(page, 0.0, 1.0);
-                            ui.multiply_opacity(page);
-                            ui.add_enabled_ui(!saving && page >= 0.85, |ui| {
-                                if let Some(error) = &error {
-                                    ui.label(t::text(lang.tr(K::SettingsError), 13.0, p.danger));
-                                    egui::CollapsingHeader::new(lang.tr(K::TechnicalDetails)).show(
-                                        ui,
-                                        |ui| {
-                                            ui.add(
-                                                egui::Label::new(t::text(error, 12.0, p.muted))
-                                                    .wrap(),
+                            ui.with_visual_transform(
+                                egui::emath::TSTransform::from_translation(Vec2::new(
+                                    0.0,
+                                    8.0 * (1.0 - page),
+                                )),
+                                |ui| {
+                                    ui.multiply_opacity(page);
+                                    ui.add_enabled_ui(!saving && page >= 0.85, |ui| {
+                                        if let Some(error) = &error {
+                                            ui.label(t::text(
+                                                lang.tr(K::SettingsError),
+                                                13.0,
+                                                p.danger,
+                                            ));
+                                            egui::CollapsingHeader::new(
+                                                lang.tr(K::TechnicalDetails),
+                                            )
+                                            .show(
+                                                ui,
+                                                |ui| {
+                                                    ui.add(
+                                                        egui::Label::new(t::text(
+                                                            error, 12.0, p.muted,
+                                                        ))
+                                                        .wrap(),
+                                                    );
+                                                },
                                             );
-                                        },
-                                    );
-                                    ui.add_space(t::MD);
-                                }
-                                match self.settings_section {
-                                    Section::General => {
-                                        label(ui, lang.tr(K::LanguageLabel), p);
-                                        egui::ComboBox::from_id_salt("language")
-                                            .width(240.0_f32.min(ui.available_width()))
-                                            .selected_text(draft.language.name())
-                                            .show_ui(ui, |ui| {
-                                                for language in Language::ALL {
-                                                    if ui
-                                                        .selectable_value(
-                                                            &mut draft.language,
-                                                            language,
-                                                            language.name(),
-                                                        )
-                                                        .clicked()
-                                                    {
-                                                        close_selected_popup(ui);
+                                            ui.add_space(t::MD);
+                                        }
+                                        match self.settings_section {
+                                            Section::General => {
+                                                label(ui, lang.tr(K::LanguageLabel), p);
+                                                egui::ComboBox::from_id_salt("language")
+                                                    .width(240.0_f32.min(ui.available_width()))
+                                                    .selected_text(draft.language.name())
+                                                    .show_ui(ui, |ui| {
+                                                        for language in Language::ALL {
+                                                            if ui
+                                                                .selectable_value(
+                                                                    &mut draft.language,
+                                                                    language,
+                                                                    language.name(),
+                                                                )
+                                                                .clicked()
+                                                            {
+                                                                close_selected_popup(ui);
+                                                            }
+                                                        }
+                                                    });
+                                                hint(ui, lang.tr(K::LanguageHint), p);
+                                                ui.add_space(t::LG);
+                                                label(ui, lang.tr(K::ScaleLabel), p);
+                                                ui.horizontal(|ui| {
+                                                    for scale in [90, 100, 110, 125] {
+                                                        let selected = draft.scale_percent == scale;
+                                                        let response = ui.add(
+                                                            egui::Button::new(t::text(
+                                                                format!("{scale}%"),
+                                                                13.0,
+                                                                if selected {
+                                                                    p.text
+                                                                } else {
+                                                                    p.muted
+                                                                },
+                                                            ))
+                                                            .fill(if selected {
+                                                                p.selected
+                                                            } else {
+                                                                p.panel
+                                                            })
+                                                            .stroke(Stroke::new(
+                                                                1.0_f32,
+                                                                if selected {
+                                                                    p.focus
+                                                                } else {
+                                                                    p.line
+                                                                },
+                                                            ))
+                                                            .min_size(Vec2::new(56.0, t::CONTROL))
+                                                            .corner_radius(6),
+                                                        );
+                                                        if response.clicked() {
+                                                            draft.scale_percent = scale;
+                                                        }
                                                     }
-                                                }
-                                            });
-                                        hint(ui, lang.tr(K::LanguageHint), p);
-                                        ui.add_space(t::LG);
-                                        label(ui, lang.tr(K::ScaleLabel), p);
-                                        ui.horizontal(|ui| {
-                                            for scale in [90, 100, 110, 125] {
-                                                let selected = draft.scale_percent == scale;
-                                                let response = ui.add(
-                                                    egui::Button::new(t::text(
-                                                        format!("{scale}%"),
-                                                        13.0,
-                                                        if selected { p.text } else { p.muted },
-                                                    ))
-                                                    .fill(if selected {
-                                                        p.selected
-                                                    } else {
-                                                        p.panel
-                                                    })
-                                                    .stroke(Stroke::new(
-                                                        1.0_f32,
-                                                        if selected { p.focus } else { p.line },
-                                                    ))
-                                                    .min_size(Vec2::new(56.0, t::CONTROL))
-                                                    .corner_radius(6),
+                                                });
+                                                hint(ui, lang.tr(K::ScaleHint), p);
+                                                ui.add_space(t::MD);
+                                                t::toggle_row(
+                                                    ui,
+                                                    &mut draft.reduce_motion,
+                                                    lang.tr(K::MotionLabel),
+                                                    p,
                                                 );
-                                                if response.clicked() {
-                                                    draft.scale_percent = scale;
+                                            }
+                                            Section::Appearance => {
+                                                label(ui, lang.tr(K::ThemeLabel), p);
+                                                theme_choices(ui, &mut draft);
+                                                ui.add_space(t::MD);
+                                                if draft.theme == Theme::Custom {
+                                                    color_row(
+                                                        ui,
+                                                        lang.tr(K::AccentLabel),
+                                                        &mut draft.accent,
+                                                        p,
+                                                    );
+                                                    color_row(
+                                                        ui,
+                                                        lang.tr(K::BackgroundLabel),
+                                                        &mut draft.background,
+                                                        p,
+                                                    );
+                                                    hint(ui, lang.tr(K::ContrastHint), p);
+                                                    ui.add_space(t::SM);
                                                 }
                                             }
-                                        });
-                                        hint(ui, lang.tr(K::ScaleHint), p);
-                                        ui.add_space(t::MD);
-                                        t::toggle_row(
-                                            ui,
-                                            &mut draft.reduce_motion,
-                                            lang.tr(K::MotionLabel),
-                                            p,
-                                        );
-                                    }
-                                    Section::Appearance => {
-                                        label(ui, lang.tr(K::ThemeLabel), p);
-                                        theme_choices(ui, &mut draft);
-                                        ui.add_space(t::MD);
-                                        if draft.theme == Theme::Custom {
-                                            color_row(
-                                                ui,
-                                                lang.tr(K::AccentLabel),
-                                                &mut draft.accent,
-                                                p,
-                                            );
-                                            color_row(
-                                                ui,
-                                                lang.tr(K::BackgroundLabel),
-                                                &mut draft.background,
-                                                p,
-                                            );
-                                            hint(ui, lang.tr(K::ContrastHint), p);
-                                            ui.add_space(t::SM);
-                                        }
-                                    }
-                                    Section::Installation => {
-                                        label(ui, lang.tr(K::RestartLabel), p);
-                                        egui::ComboBox::from_id_salt("restart-mode")
-                                            .width(ui.available_width().min(360.0))
-                                            .selected_text(lang.tr(match draft.restart_prompt {
-                                                RestartPrompt::All => K::PromptAll,
-                                                RestartPrompt::Plugins => K::PromptPlugins,
-                                                RestartPrompt::Never => K::PromptNever,
-                                            }))
-                                            .show_ui(ui, |ui| {
-                                                for (mode, key) in [
-                                                    (RestartPrompt::All, K::PromptAll),
-                                                    (RestartPrompt::Plugins, K::PromptPlugins),
-                                                    (RestartPrompt::Never, K::PromptNever),
-                                                ] {
-                                                    if ui
-                                                        .selectable_value(
-                                                            &mut draft.restart_prompt,
-                                                            mode,
-                                                            lang.tr(key),
-                                                        )
-                                                        .clicked()
-                                                    {
-                                                        close_selected_popup(ui);
-                                                    }
+                                            Section::Installation => {
+                                                label(ui, lang.tr(K::RestartLabel), p);
+                                                egui::ComboBox::from_id_salt("restart-mode")
+                                                    .width(ui.available_width().min(360.0))
+                                                    .selected_text(lang.tr(
+                                                        match draft.restart_prompt {
+                                                            RestartPrompt::All => K::PromptAll,
+                                                            RestartPrompt::Plugins => {
+                                                                K::PromptPlugins
+                                                            }
+                                                            RestartPrompt::Never => K::PromptNever,
+                                                        },
+                                                    ))
+                                                    .show_ui(ui, |ui| {
+                                                        for (mode, key) in [
+                                                            (RestartPrompt::All, K::PromptAll),
+                                                            (
+                                                                RestartPrompt::Plugins,
+                                                                K::PromptPlugins,
+                                                            ),
+                                                            (RestartPrompt::Never, K::PromptNever),
+                                                        ] {
+                                                            if ui
+                                                                .selectable_value(
+                                                                    &mut draft.restart_prompt,
+                                                                    mode,
+                                                                    lang.tr(key),
+                                                                )
+                                                                .clicked()
+                                                            {
+                                                                close_selected_popup(ui);
+                                                            }
+                                                        }
+                                                    });
+                                                ui.add_space(t::MD);
+                                                t::toggle_row(
+                                                    ui,
+                                                    &mut draft.refresh_on_focus,
+                                                    lang.tr(K::RefreshFocus),
+                                                    p,
+                                                );
+                                                ui.add_space(t::MD);
+                                                egui::Frame::new()
+                                                    .fill(p.panel)
+                                                    .corner_radius(6)
+                                                    .inner_margin(t::MD)
+                                                    .show(ui, |ui| {
+                                                        hint(ui, lang.tr(K::SafetyHint), p);
+                                                    });
+                                            }
+                                            Section::Cavalry => {
+                                                label(ui, lang.tr(K::AppPathLabel), p);
+                                                ui.add(
+                                                    egui::TextEdit::singleline(
+                                                        &mut draft.cavalry_path,
+                                                    )
+                                                    .id_salt("cavalry-path")
+                                                    .background_color(p.surface)
+                                                    .hint_text(t::text(
+                                                        lang.tr(K::AutoDetect),
+                                                        14.0,
+                                                        p.muted,
+                                                    ))
+                                                    .desired_width(f32::INFINITY)
+                                                    .margin(egui::Margin::symmetric(8, 8)),
+                                                );
+                                                if t::button(
+                                                    ui,
+                                                    lang.tr(K::Browse),
+                                                    t::Button::Secondary,
+                                                    p,
+                                                )
+                                                .clicked()
+                                                {
+                                                    browse = true;
                                                 }
-                                            });
-                                        ui.add_space(t::MD);
-                                        t::toggle_row(
-                                            ui,
-                                            &mut draft.refresh_on_focus,
-                                            lang.tr(K::RefreshFocus),
-                                            p,
-                                        );
-                                        ui.add_space(t::MD);
-                                        egui::Frame::new()
-                                            .fill(p.panel)
-                                            .corner_radius(6)
-                                            .inner_margin(t::MD)
-                                            .show(ui, |ui| {
-                                                hint(ui, lang.tr(K::SafetyHint), p);
-                                            });
-                                    }
-                                    Section::Cavalry => {
-                                        label(ui, lang.tr(K::AppPathLabel), p);
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut draft.cavalry_path)
-                                                .id_salt("cavalry-path")
-                                                .background_color(p.surface)
-                                                .hint_text(t::text(
-                                                    lang.tr(K::AutoDetect),
-                                                    14.0,
-                                                    p.muted,
-                                                ))
-                                                .desired_width(f32::INFINITY)
-                                                .margin(egui::Margin::symmetric(8, 8)),
-                                        );
-                                        if t::button(
-                                            ui,
-                                            lang.tr(K::Browse),
-                                            t::Button::Secondary,
-                                            p,
-                                        )
-                                        .clicked()
-                                        {
-                                            browse = true;
+                                                hint(ui, lang.tr(K::PathHint), p);
+                                                ui.add_space(t::LG);
+                                                hint(ui, lang.tr(K::SettingsLocal), p);
+                                            }
                                         }
-                                        hint(ui, lang.tr(K::PathHint), p);
-                                        ui.add_space(t::LG);
-                                        hint(ui, lang.tr(K::SettingsLocal), p);
-                                    }
-                                }
-                            });
+                                    });
+                                },
+                            );
                         });
                 });
             t::footer(ui, |ui| {
                 ui.add_enabled_ui(can_save, |ui| {
-                    let r = t::button(
-                        ui,
-                        lang.tr(if saving { K::SaveBusy } else { K::Save }),
-                        t::Button::Primary,
-                        p,
-                    );
+                    let label = lang.tr(if saving { K::SaveBusy } else { K::Save });
+                    let width = ui
+                        .painter()
+                        .layout_no_wrap(label.into(), t::medium(14.0), p.text)
+                        .size()
+                        .x
+                        + 18.0
+                        + t::SM
+                        + 2.0 * t::MD;
+                    let r = t::soft_action(ui, label, Icon::Check, t::category(p, false), p, width);
                     self.record(K::Save, &r);
                     save = r.clicked();
                 });
@@ -299,7 +337,7 @@ impl CavalryKitApp {
             self.save_settings();
         }
         if self.settings_closing
-            && super::motion::modal_progress(ctx, egui::Id::new("settings"), true, 0.28) <= 0.001
+            && super::motion::modal_progress(ctx, egui::Id::new("settings"), true, 0.24) <= 0.001
         {
             self.settings_draft = None;
             self.settings_closing = false;
@@ -309,10 +347,10 @@ impl CavalryKitApp {
     }
 }
 fn label(ui: &mut egui::Ui, text: &str, p: t::Palette) {
-    ui.label(t::heading(text, 14.0, p));
+    ui.label(t::heading(text, 13.0, p));
 }
 fn hint(ui: &mut egui::Ui, text: &str, p: t::Palette) {
-    ui.add(egui::Label::new(t::text(text, 12.0, p.muted)).wrap());
+    ui.add(egui::Label::new(t::text(text, 11.0, t::helper_ink(p))).wrap());
 }
 fn color_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3], p: t::Palette) {
     ui.horizontal(|ui| {

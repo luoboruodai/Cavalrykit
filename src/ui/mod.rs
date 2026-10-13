@@ -11,3 +11,5 @@ pub mod theme;
 pub(crate) mod motion;
 
 pub(crate) mod diagnostics;
+
+pub(crate) mod search_hint;

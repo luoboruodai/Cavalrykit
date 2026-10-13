@@ -14,40 +14,38 @@ impl CavalryKitApp {
             Vec2::new(ui.available_width(), t::HEADER),
             egui::Sense::hover(),
         );
-        let logo = Rect::from_min_size(rect.min, Vec2::splat(32.0));
+        let logo = Rect::from_center_size(
+            Pos2::new(rect.left() + 14.0, rect.center().y),
+            Vec2::splat(28.0),
+        );
         ui.painter().image(
             self.logo.id(),
             logo,
             Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
             egui::Color32::WHITE,
         );
-        let title = ui
-            .painter()
-            .layout_no_wrap("CavalryKit".into(), t::medium(18.0), p.text);
-        let title_rect = Rect::from_min_size(
-            Pos2::new(logo.right() + t::SM, logo.center().y - title.size().y / 2.0),
-            title.size(),
-        );
-        ui.painter().galley(title_rect.min, title, p.text);
-        self.audit.title = Some(title_rect);
-        let label = format!(
-            "Cavalry {}",
-            lang.tr(if self.cavalry_running {
-                K::Running
-            } else {
-                K::Stopped
-            })
-        );
+        let status_label = lang.tr(if self.cavalry_running {
+            K::Running
+        } else {
+            K::Stopped
+        });
         let text = ui
             .painter()
-            .layout_no_wrap(label.clone(), t::font(11.0), p.muted);
-        let status = Rect::from_min_size(
-            Pos2::new(rect.left(), logo.bottom() + t::XS),
-            Vec2::new(text.size().x + 16.0, 20.0),
+            .layout_no_wrap(status_label.into(), t::font(10.0), p.muted);
+        let status = Rect::from_center_size(
+            Pos2::new(rect.right() - (text.size().x + 22.0) / 2.0, rect.center().y),
+            Vec2::new(text.size().x + 22.0, 24.0),
+        );
+        ui.painter().rect(
+            status,
+            12,
+            p.surface,
+            Stroke::new(1.0_f32, p.line),
+            egui::StrokeKind::Inside,
         );
         ui.painter().circle_filled(
-            Pos2::new(status.left() + 3.0, status.center().y),
-            3.0,
+            Pos2::new(status.left() + 9.0, status.center().y),
+            2.5,
             if self.cavalry_running {
                 t::category(p, false).color
             } else {
@@ -69,8 +67,27 @@ impl CavalryKitApp {
                 egui::Sense::hover(),
             )
             .on_hover_text(lang.tr(K::StatusHint));
-        r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, &label));
+        r.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Label,
+                true,
+                format!("Cavalry {status_label}"),
+            )
+        });
         self.audit.status = Some(status);
+        let title = t::label_truncated(
+            ui,
+            "CavalryKit",
+            t::medium(16.0),
+            p.text,
+            (status.left() - logo.right() - 2.0 * t::SM).max(40.0),
+        );
+        let title_rect = Rect::from_min_size(
+            Pos2::new(logo.right() + t::SM, rect.center().y - title.size().y / 2.0),
+            title.size(),
+        );
+        ui.painter().galley(title_rect.min, title, p.text);
+        self.audit.title = Some(title_rect);
     }
     pub(crate) fn show_rail(&mut self, ui: &mut egui::Ui, _height: f32) {
         let p = self.p();
@@ -131,7 +148,7 @@ impl CavalryKitApp {
         ui.add_space(section_gap);
         for (index, key, icon, plugin) in [
             (0, K::ScriptsFolder, Icon::Folder, false),
-            (1, K::PluginsFolder, Icon::Plugin, true),
+            (1, K::PluginsFolder, Icon::Plugin, false),
             (2, K::About, Icon::Info, false),
             (3, K::Settings, Icon::Settings, false),
         ] {
@@ -142,6 +159,9 @@ impl CavalryKitApp {
                 })
                 .inner;
             self.audit.navigation.push(r.rect);
+            self.audit
+                .navigation_colors
+                .push(t::category(p, false).color);
             if r.clicked() {
                 match key {
                     K::ScriptsFolder => {
@@ -232,7 +252,7 @@ impl CavalryKitApp {
             },
             hover,
         );
-        let resting = t::mix(p.panel, p.bg, if p.dark { 0.35 } else { 0.75 });
+        let resting = t::drop_surface(p);
         ui.painter().rect(
             rect,
             12,
@@ -252,11 +272,11 @@ impl CavalryKitApp {
         }
         let inner = rect.shrink(t::MD);
         let compact = height < 180.0;
-        let tile_size = if compact { 28.0 } else { 48.0 };
+        let tile_size = if compact { 28.0 } else { 40.0 };
         let text_gap = if compact { t::XS } else { t::SM };
         let mut job = egui::text::LayoutJob::simple(
             lang.tr(K::DropTitle).into(),
-            t::medium(13.0),
+            t::medium(14.0),
             p.text,
             inner.width(),
         );
@@ -276,7 +296,7 @@ impl CavalryKitApp {
             .rect_filled(tile, 10, t::mix(p.surface, tone.tint, active));
         icons::paint(
             ui.painter(),
-            tile.shrink(if compact { 4.0 } else { 12.0 }),
+            tile.shrink(if compact { 4.0 } else { 9.0 }),
             Icon::Import,
             tone.color,
         );

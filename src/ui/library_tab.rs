@@ -55,7 +55,7 @@ impl CavalryKitApp {
         );
         let search_rect = Rect::from_min_max(
             search_row.min,
-            search_row.max - Vec2::new(t::CONTROL + t::SM, 0.0),
+            search_row.max - Vec2::new(t::SEARCH_HEIGHT + t::SM, 0.0),
         );
         let mut search_ui = ui.new_child(
             egui::UiBuilder::new()
@@ -64,8 +64,11 @@ impl CavalryKitApp {
         );
         self.search_box(&mut search_ui);
         let refresh_rect = Rect::from_center_size(
-            Pos2::new(search_row.right() - t::CONTROL / 2.0, search_row.center().y),
-            Vec2::splat(t::CONTROL),
+            Pos2::new(
+                search_row.right() - t::SEARCH_HEIGHT / 2.0,
+                search_row.center().y,
+            ),
+            Vec2::splat(t::SEARCH_HEIGHT),
         );
         let mut refresh = ui.new_child(
             egui::UiBuilder::new()
@@ -74,7 +77,7 @@ impl CavalryKitApp {
         );
         let r = refresh
             .add_enabled_ui(self.busy.is_none() && self.conflicts.is_empty(), |ui| {
-                t::icon_button(ui, lang.tr(K::Refresh), Icon::Refresh, false, p)
+                t::refresh_button(ui, lang.tr(K::Refresh), p)
             })
             .inner;
         self.audit.refresh = Some(r.rect);
@@ -104,6 +107,15 @@ impl CavalryKitApp {
         ui.add_space(t::MD);
         let height = ui.available_height().max(48.0);
         // Empty states are static; don't start a repaint loop for an animation they don't use.
+        let view_changed = self
+            .list_view_key
+            .as_ref()
+            .is_none_or(|(filter, query)| *filter != self.filter || query != self.search.trim());
+        if view_changed {
+            self.list_view_key = Some((self.filter, self.search.trim().to_owned()));
+            self.selected_row = None;
+            ui.memory_mut(|m| m.close_popup());
+        }
         let reveal = if self.rows.is_empty() {
             1.0
         } else {
@@ -111,7 +123,7 @@ impl CavalryKitApp {
                 ui.ctx(),
                 egui::Id::new("library-reveal"),
                 egui::Id::new(self.filter as u8),
-                0.42,
+                0.70,
             )
         };
         if self.rows.is_empty() {
@@ -156,148 +168,198 @@ impl CavalryKitApp {
                 },
             );
         } else {
-            egui::ScrollArea::vertical()
+            let mut scroll = egui::ScrollArea::vertical()
                 .id_salt("library-list")
                 .auto_shrink([false, false])
-                .max_height(height)
-                .show_rows(ui, t::ROW, self.rows.len(), |ui, range| {
-                    // Use the stable global row index, not the viewport range, so scrolling
-                    // during the bounded reveal cannot retime an existing row or its actions.
-                    for index in range.clone() {
-                        let start = (index.min(8) as f32) * 0.045;
-                        let row_reveal = super::motion::phase(reveal, start, start + 0.62);
-                        let (name, kind, meta, path) = match self.rows[index] {
-                            Row::Script(i) => {
-                                let e = &self.library.scripts[i];
-                                (&e.name, K::Scripts, e.group.as_deref(), &e.path)
-                            }
-                            Row::Plugin(i) => {
-                                let e = &self.library.plugins[i];
-                                (&e.name, K::Plugins, e.author.as_deref(), &e.path)
-                            }
-                        };
-                        let key = path.clone();
-                        ui.push_id((kind as u32, &key), |ui| {
-                            ui.add_enabled_ui(self.busy.is_none(), |ui| {
-                                let (slot, response) = ui.allocate_exact_size(
-                                    Vec2::new(ui.available_width(), t::ROW),
-                                    egui::Sense::hover(),
-                                );
-                                let rect =
-                                    Rect::from_min_max(slot.min, slot.max - Vec2::new(0.0, t::SM));
-                                let tone = t::category(p, kind == K::Plugins);
-                                self.audit.row_colors.push(tone.color);
-                                let hover = t::motion(
-                                    ui,
-                                    response.id.with("row-hover"),
-                                    ui.is_enabled() && response.contains_pointer(),
-                                );
-                                let bg = t::mix(p.panel, p.surface, hover * 0.75);
-                                ui.painter().rect(
-                                    rect,
-                                    t::CARD_RADIUS,
-                                    bg,
-                                    Stroke::new(hover, tone.color),
-                                    egui::StrokeKind::Inside,
-                                );
-                                ui.painter().rect_filled(
-                                    Rect::from_min_size(
-                                        rect.min + Vec2::new(0.0, 8.0),
-                                        Vec2::new(3.0, rect.height() - 16.0),
-                                    ),
-                                    1,
-                                    tone.color,
-                                );
-                                let mut painter = ui.painter().clone();
-                                painter.multiply_opacity(row_reveal);
-                                let dy = 3.0 * (1.0 - row_reveal);
-                                let tile = Rect::from_center_size(
-                                    Pos2::new(rect.left() + 28.0, rect.center().y + dy),
-                                    Vec2::splat(28.0),
-                                );
-                                painter.rect_filled(tile, 6, tone.tint);
-                                icons::paint(
-                                    &painter,
-                                    tile.shrink(6.0),
-                                    if kind == K::Scripts {
-                                        Icon::Script
-                                    } else {
-                                        Icon::Plugin
-                                    },
-                                    tone.color,
-                                );
-                                let actions = 2.0 * t::CONTROL + t::MD;
-                                let x = rect.left() + 56.0 + 2.0 * hover;
-                                let width =
-                                    (rect.width() - 56.0 - actions - 2.0 * t::SM - 2.0).max(16.0);
-                                let title =
-                                    t::label_truncated(ui, name, t::font(14.0), p.text, width);
-                                let subtitle = if let Some(value) = meta {
-                                    format!("{} · {value}", lang.tr(kind))
-                                } else {
-                                    lang.tr(kind).into()
-                                };
-                                let detail = t::label_truncated(
-                                    ui,
-                                    &subtitle,
-                                    t::font(11.0),
-                                    p.muted,
-                                    width,
-                                );
-                                let text_height = title.size().y + t::XS + detail.size().y;
-                                let y = rect.center().y - text_height / 2.0 + dy;
-                                let title_h = title.size().y;
-                                // Only long/elided text needs a tooltip; don't obscure the next row on every hover.
-                                if title.elided || detail.elided {
-                                    response.on_hover_text(format!("{name}\n{subtitle}"));
-                                }
-                                painter.galley(Pos2::new(x, y), title, p.text);
-                                painter.galley(Pos2::new(x, y + title_h + t::XS), detail, p.muted);
-                                let action_rect = Rect::from_min_max(
-                                    Pos2::new(
-                                        rect.right() - t::SM - actions,
-                                        rect.center().y - t::CONTROL / 2.0,
-                                    ),
-                                    Pos2::new(
-                                        rect.right() - t::SM,
-                                        rect.center().y + t::CONTROL / 2.0,
-                                    ),
-                                );
-                                let mut child = ui.new_child(
-                                    egui::UiBuilder::new()
-                                        .max_rect(action_rect)
-                                        .layout(egui::Layout::right_to_left(egui::Align::Center)),
-                                );
-                                child.spacing_mut().item_spacing.x = t::MD;
-                                child.multiply_opacity(row_reveal);
-                                if row_reveal < 0.85 {
-                                    child.disable();
-                                }
-                                let remove = t::icon_button(
-                                    &mut child,
-                                    &format!("{} · {name}", lang.tr(K::Uninstall)),
-                                    Icon::Trash,
-                                    true,
-                                    p,
-                                );
-                                if remove.clicked() {
-                                    self.confirm_uninstall = Some(path.clone());
-                                }
-                                let show = t::icon_button(
-                                    &mut child,
-                                    &format!("{} · {name}", lang.tr(K::Reveal)),
-                                    Icon::Reveal,
-                                    false,
-                                    p,
-                                );
-                                if show.clicked() {
-                                    paths::reveal_in_file_manager(path);
-                                }
-                                self.audit.row_actions.push((show.rect, remove.rect));
+                .max_height(height);
+            if view_changed {
+                scroll = scroll.vertical_scroll_offset(0.0);
+            }
+            scroll.show_rows(ui, t::ROW, self.rows.len(), |ui, range| {
+                for index in range {
+                    let start = index.min(8) as f32 * 0.065;
+                    let row_reveal = super::motion::phase(reveal, start, start + 0.48);
+                    let (name, kind, meta, path) = match self.rows[index] {
+                        Row::Script(i) => {
+                            let e = &self.library.scripts[i];
+                            (&e.name, K::Scripts, e.group.as_deref(), &e.path)
+                        }
+                        Row::Plugin(i) => {
+                            let e = &self.library.plugins[i];
+                            (&e.name, K::Plugins, e.author.as_deref(), &e.path)
+                        }
+                    };
+                    let key = path.clone();
+                    ui.push_id((kind as u32, &key), |ui| {
+                        ui.add_enabled_ui(self.busy.is_none() && row_reveal >= 0.99, |ui| {
+                            let (slot, _) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), t::ROW),
+                                egui::Sense::hover(),
+                            );
+                            let hit =
+                                Rect::from_min_max(slot.min, slot.max - Vec2::new(0.0, t::SM));
+                            // The menu owns its fixed 40pt cell. A row click only selects; never executes.
+                            let action = Rect::from_center_size(
+                                Pos2::new(hit.right() - t::SM - t::CONTROL / 2.0, hit.center().y),
+                                Vec2::splat(t::CONTROL),
+                            );
+                            let select_rect = Rect::from_min_max(
+                                hit.min,
+                                Pos2::new(action.left() - t::SM, hit.bottom()),
+                            );
+                            let selected = self.selected_row.as_ref() == Some(path);
+                            let response = ui.interact(
+                                select_rect,
+                                ui.id().with("select"),
+                                egui::Sense::click(),
+                            );
+                            response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::SelectableLabel,
+                                    ui.is_enabled(),
+                                    selected,
+                                    name,
+                                )
                             });
+                            if response.clicked() {
+                                self.selected_row = Some(path.clone());
+                            }
+                            let popup_id = ui.id().with("more-menu");
+                            let active = ui.is_enabled()
+                                && (selected
+                                    || response.has_focus()
+                                    || ui.rect_contains_pointer(hit)
+                                    || ui.memory(|m| m.is_popup_open(popup_id)));
+                            let hover = t::motion(ui, ui.id().with("row-hover"), active);
+                            let tone = t::category(p, kind == K::Plugins);
+                            self.audit.row_colors.push(tone.color);
+                            self.audit.row_hits.push(hit);
+                            let dy = 14.0 * (1.0 - row_reveal);
+                            let rect = hit.shrink2(Vec2::new(t::SM * (1.0 - hover), 0.0));
+                            self.audit
+                                .row_visuals
+                                .push((rect.translate(Vec2::new(0.0, dy)), row_reveal));
+                            let mut more = None;
+                            ui.with_visual_transform(
+                                egui::emath::TSTransform::from_translation(Vec2::new(0.0, dy)),
+                                |ui| {
+                                    ui.multiply_opacity(row_reveal);
+                                    ui.painter().rect(
+                                        rect,
+                                        t::CARD_RADIUS,
+                                        t::mix(p.panel, p.surface, hover),
+                                        Stroke::new(
+                                            if response.has_focus() { 1.5 } else { hover },
+                                            tone.color,
+                                        ),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    ui.painter().rect_filled(
+                                        Rect::from_min_size(
+                                            rect.min + Vec2::new(0.0, 4.0 * (1.0 - hover)),
+                                            Vec2::new(
+                                                2.0 + 2.0 * hover,
+                                                rect.height() - 8.0 * (1.0 - hover),
+                                            ),
+                                        ),
+                                        2,
+                                        tone.color,
+                                    );
+                                    let tile = Rect::from_center_size(
+                                        Pos2::new(rect.left() + 28.0, rect.center().y),
+                                        Vec2::splat(28.0),
+                                    );
+                                    ui.painter().rect_filled(tile, 6, tone.tint);
+                                    icons::paint(
+                                        ui.painter(),
+                                        tile.shrink(6.0),
+                                        if kind == K::Scripts {
+                                            Icon::Script
+                                        } else {
+                                            Icon::Plugin
+                                        },
+                                        tone.color,
+                                    );
+                                    let x = rect.left() + 52.0;
+                                    let width = (action.left() - t::MD - x).max(16.0);
+                                    let title =
+                                        t::label_truncated(ui, name, t::font(14.0), p.text, width);
+                                    let subtitle = meta
+                                        .map(|m| format!("{} · {m}", lang.tr(kind)))
+                                        .unwrap_or_else(|| lang.tr(kind).into());
+                                    let detail = t::label_truncated(
+                                        ui,
+                                        &subtitle,
+                                        t::font(11.0),
+                                        t::helper_ink(p),
+                                        width,
+                                    );
+                                    let title_h = title.size().y;
+                                    let y =
+                                        rect.center().y - (title_h + t::XS + detail.size().y) / 2.0;
+                                    if title.elided || detail.elided {
+                                        response.on_hover_text(format!("{name}\n{subtitle}"));
+                                    }
+                                    ui.painter().galley(Pos2::new(x, y), title, p.text);
+                                    ui.painter().galley(
+                                        Pos2::new(x, y + title_h + t::XS),
+                                        detail,
+                                        p.muted,
+                                    );
+                                    let mut child =
+                                        ui.new_child(egui::UiBuilder::new().max_rect(action));
+                                    child.multiply_opacity(row_reveal);
+                                    more = Some(t::icon_button(
+                                        &mut child,
+                                        &format!("{} · {name}", lang.tr(K::More)),
+                                        Icon::More,
+                                        false,
+                                        p,
+                                    ));
+                                },
+                            );
+                            let more = more.unwrap();
+                            self.audit.row_menu_buttons.push(more.rect);
+                            if more.clicked() {
+                                ui.memory_mut(|m| m.toggle_popup(popup_id));
+                            }
+                            // Popup Areas do not inherit disabled parent UIs. Close only this
+                            // row popup when a modal/busy/reveal disables the background.
+                            if !ui.is_enabled() && ui.memory(|m| m.is_popup_open(popup_id)) {
+                                ui.memory_mut(|m| m.close_popup());
+                            }
+                            egui::popup::popup_below_widget(
+                                ui,
+                                popup_id,
+                                &more,
+                                egui::popup::PopupCloseBehavior::CloseOnClickOutside,
+                                |ui| {
+                                    ui.set_min_width(176.0);
+                                    ui.spacing_mut().item_spacing.y = t::SM;
+                                    let show =
+                                        t::button(ui, lang.tr(K::Reveal), t::Button::Quiet, p);
+                                    ui.separator();
+                                    let remove = t::button(
+                                        ui,
+                                        lang.tr(K::Uninstall),
+                                        t::Button::QuietDanger,
+                                        p,
+                                    );
+                                    self.audit.row_actions.push((show.rect, remove.rect));
+                                    if show.clicked() {
+                                        ui.memory_mut(|m| m.close_popup());
+                                        paths::reveal_in_file_manager(path);
+                                    }
+                                    if remove.clicked() {
+                                        ui.memory_mut(|m| m.close_popup());
+                                        self.confirm_uninstall = Some(path.clone());
+                                    }
+                                },
+                            );
                         });
-                    }
-                });
+                    });
+                }
+            });
         }
         self.audit.card = Some(area);
     }
@@ -320,26 +382,32 @@ impl CavalryKitApp {
         if r.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
         }
-        let hovered = r.hovered();
+        // The TextEdit covers most of the field, so Response::hovered alone misses it.
+        let hovered = ui.is_enabled() && ui.rect_contains_pointer(rect);
         r.on_hover_cursor(egui::CursorIcon::Text);
         let focused = ui.memory(|m| m.has_focus(id));
-        let tone = t::category(p, self.filter == Filter::Plugins);
-        let hover = t::motion(ui, id.with("hover"), hovered || focused);
+        let tone = t::category(p, false);
+        let hover = t::motion(
+            ui,
+            id.with("hover"),
+            ui.is_enabled() && (hovered || focused),
+        );
         self.audit.search_hover = hover;
-        ui.painter()
-            .rect_filled(rect, 10, t::mix(p.panel, tone.tint, hover * 0.55));
-        ui.painter().rect_stroke(
+        ui.painter().rect(
             rect,
             10,
+            t::mix(p.panel, tone.tint, hover * 0.6),
             Stroke::new(if focused { 1.5 } else { hover }, tone.color),
             egui::StrokeKind::Inside,
         );
+        let icon = Rect::from_center_size(
+            Pos2::new(rect.left() + 20.0, rect.center().y),
+            Vec2::splat(16.0),
+        );
+        self.audit.search_icon = Some(icon);
         icons::paint(
             ui.painter(),
-            Rect::from_center_size(
-                Pos2::new(rect.left() + 20.0, rect.center().y),
-                Vec2::splat(16.0),
-            ),
+            icon,
             Icon::Search,
             t::mix(p.muted, tone.color, hover),
         );
@@ -347,35 +415,65 @@ impl CavalryKitApp {
             rect.min + Vec2::new(40.0, 0.0),
             rect.max - Vec2::new(clear_width.max(t::SM), 0.0),
         );
-        let edit = ui
-            .put(
-                text_rect,
-                egui::TextEdit::singleline(&mut self.search)
-                    .id(id)
-                    .hint_text(t::text(lang.tr(K::Search), 14.0, p.muted))
-                    .font(t::font(14.0))
-                    .frame(false)
-                    .margin(egui::Margin::symmetric(0, 10)),
-            )
-            .on_hover_text(lang.tr(K::Search));
-        edit.widget_info(|| {
+        let mut text_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt("search-editor")
+                .max_rect(text_rect),
+        );
+        let edit = egui::TextEdit::singleline(&mut self.search)
+            .id(id)
+            .font(t::font(14.0))
+            .frame(false)
+            .margin(egui::Margin::ZERO)
+            .desired_width(text_rect.width())
+            .min_size(text_rect.size())
+            .vertical_align(egui::Align::Center)
+            .show(&mut text_ui);
+        self.audit.search_text = Some(Rect::from_min_size(edit.galley_pos, edit.galley.size()));
+        let hint = super::search_hint::current(
+            ui.ctx(),
+            ui.is_enabled()
+                && ui.input(|i| i.focused)
+                && !edit.response.has_focus()
+                && self.search.is_empty(),
+        );
+        if self.search.is_empty() {
+            let label = lang.tr(hint.key);
+            self.audit.search_hint = label.into();
+            let g = t::label_truncated(
+                ui,
+                label,
+                t::font(14.0),
+                t::placeholder_ink(p),
+                text_rect.width(),
+            );
+            let pos = Pos2::new(
+                text_rect.left(),
+                text_rect.center().y - g.size().y / 2.0 + hint.offset,
+            );
+            let mut painter = ui
+                .painter()
+                .with_clip_rect(text_rect.intersect(ui.clip_rect()));
+            painter.multiply_opacity(hint.opacity);
+            painter.galley(pos, g, t::placeholder_ink(p));
+        }
+        edit.response.widget_info(|| {
             let mut info = egui::WidgetInfo::text_edit(ui.is_enabled(), &self.search, &self.search);
             info.label = Some(lang.tr(K::Search).into());
             info
         });
-        let clear_rect = Rect::from_center_size(
-            Pos2::new(rect.right() - 20.0, rect.center().y),
-            Vec2::splat(t::CONTROL),
-        );
-        let mut clear = ui.new_child(egui::UiBuilder::new().max_rect(clear_rect));
         if !self.search.is_empty() {
+            let clear_rect = Rect::from_center_size(
+                Pos2::new(rect.right() - 20.0, rect.center().y),
+                Vec2::splat(t::CONTROL),
+            );
+            let mut clear = ui.new_child(egui::UiBuilder::new().max_rect(clear_rect));
             self.audit.clear_search = Some(clear_rect);
-        }
-        if !self.search.is_empty()
-            && t::icon_button(&mut clear, lang.tr(K::ClearSearch), Icon::Close, false, p).clicked()
-        {
-            self.search.clear();
-            clear.memory_mut(|m| m.request_focus(id));
+            if t::icon_button(&mut clear, lang.tr(K::ClearSearch), Icon::Close, false, p).clicked()
+            {
+                self.search.clear();
+                clear.memory_mut(|m| m.request_focus(id));
+            }
         }
     }
 }

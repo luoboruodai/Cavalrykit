@@ -32,10 +32,10 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 - **更少 UI 阻塞**：识别、解压、复制、扫描、卸载和进程检查在后台串行执行；原生文件选择使用异步窗口。
 - **Windows 针对性处理**：用原生进程枚举代替反复启动 `tasklist`；保留系统原生窗口标题栏；默认 wgpu 渲染，另有 Glow 兼容模式。
 - **大型库性能**：缓存搜索索引、只绘制可见条目、长名称一次截断排版；结果分页以限制单帧工作量。
-- **左侧工作区**：品牌与宿主状态整合到左栏，柔和导入卡片下方是独立「选择文件」按钮和灰色提示，四个快捷入口纵向排列。右侧保留类型筛选和列表。
-- **统一类型颜色**：脚本绿色、插件蓝色；图标、边条、悬停描边和计数徽章共用同一类型颜色。深浅主题分别保证可读性。
-- **明确热区**：导入卡片和下方按钮彼此不覆盖；显示/卸载统一为40pt图标按钮并间隔16pt，有本地化名称和提示。搜索留白可聚焦，设置开关整行可点。
-- **分阶段动效**：分段筛选底板平滑切换，导入图标/标题/格式说明协同响应，行卡和入口有颜色过渡；目标位置不移动，减少动效立即切换，空闲不循环重绘。
+- **左侧工作区**：品牌与右侧宿主状态徽章同处左栏一行，柔和导入卡片下方是独立「选择文件」按钮和灰色提示，四个快捷入口纵向排列。右侧保留类型筛选和列表。
+- **统一类型颜色**：脚本绿色、插件蓝色；库内图标、边条、悬停描边和计数徽章共用类型颜色；四个快捷入口统一绿色。深浅主题分别保证可读性。
+- **明确热区**：导入卡片和下方按钮彼此不覆盖；行右侧为40pt三点菜单，显示/卸载分组且卸载仍需确认，有本地化名称和提示。搜索留白可聚焦，设置开关整行可点。
+- **分阶段动效**：分段筛选底板平滑切换，导入图标/标题/格式说明协同响应，整张行卡切换时逐个向上淡入，悬停外扩；目标位置不移动，减少动效立即切换。空闲搜索20秒默认/4秒偶发提示，不持续轮询帧。
 - **区域字体**：Roboto 拉丁字形 + 按语言选择的 Noto-derived SC / JP / KR，内嵌 Regular / Medium 两种字重，避免用日文字形替代简体中文 UI。
 - **一致的界面**：右对齐弹窗操作、4/8/16/24pt 基础间距、左侧品牌与状态、明确的取消入口、可见滚动条和键盘焦点。
 - **安全安装**：同名内容先询问；覆盖前暂存，失败保留/恢复旧内容；同批重名、重复保留两者和重新导入自身均有回归测试。
@@ -47,7 +47,7 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 2. 同名冲突时选择「覆盖 / 保留两者 / 跳过」，也可取消本批。危险操作不会由 Enter 自动接受；默认始终询问。
 3. 在独立结果弹窗查看成功、跳过或失败。失败会给出通用检查建议；展开「技术详情」可查看原始诊断。
 4. 成功安装后，可以选择现在重启/打开 Cavalry，或稍后自行处理。**先保存 Cavalry 工程**：程序只发送正常退出请求，不强制终止进程。若出现保存提示，请到 Cavalry 处理；取消、超时、多实例或异常时不会强杀，也不会额外启动第二个实例。
-5. 装备库可按类型筛选，按名称/分组/作者搜索；「显示」定位文件，「卸载」确认后移入废纸篓 / 回收站。
+5. 装备库可按类型筛选，按名称/分组/作者搜索；打开行右侧「更多操作」三点菜单：「显示」定位文件，「卸载」确认后移入废纸篓 / 回收站。
 6. 外部更改文件后点击「刷新」，或启用返回窗口自动刷新。
 
 **压缩包格式**：ZIP、7z、TAR、TAR.GZ / TGZ、TAR.BZ2 / TBZ2。含 `definitions.json` 的目录被视为插件；混合包中的独立脚本与插件分别安装。过滤 macOS 常见垃圾文件、拒绝路径穿越。只安装可信来源的内容。
@@ -121,7 +121,7 @@ Drop scripts, plugin folders or supported archives into the window. Resolve name
 
 The left rail contains the brand/status, a soft drop area, a separate full-width file action below it, and four vertical shortcut cards. Adaptive segmented filters have an adjacent kind-colored count; refresh shares the search row. Scripts are green and plugins blue. Reveal/remove both use icon controls. Four settings pages retain preview/cancel. Search reads “Search plugins or scripts by name”. Roboto is paired with region-specific SC/JP/KR UI subsets at regular/medium weights.
 
-The import card and the button below it are non-overlapping keyboard-accessible targets. Search decorations focus the input; full-row switches and spaced row actions reduce dead zones. Native pointer hover is distinct from file drag. Finite motion coordinates the moving segmented selection plate, content reveal, decorative feedback and staged modal entrance. Interrupting a transition starts from its current state; reduced motion reaches the final state immediately. The modal blocks background clicks from its first frame.
+The import card and the button below it are non-overlapping keyboard-accessible targets. Search decorations focus the input; full-row switches and a three-dot row menu reduce dead zones while keeping removal confirmed. Native pointer hover is distinct from file drag. Finite motion coordinates the moving segmented selection plate, content reveal, decorative feedback and staged modal entrance. Interrupting a transition starts from its current state; reduced motion reaches the final state immediately. The modal blocks background clicks and closes row popups from its first frame. Search offers sixteen localized occasional hints (20 seconds default / 4 seconds suggestion), paused during input, lost focus and reduced motion. Status sits beside the brand; all four shortcuts use green, and Save shares the soft-tinted import material.
 
 Settings include language, color scheme, custom accent/background, 90–125% scale, reduced motion, refresh-on-focus and restart-prompt policy. Changes preview immediately; Cancel reverts them, Save persists them locally. Conflicts and removal confirmations remain mandatory safety controls. Imported scripts are not executed or uploaded.
 

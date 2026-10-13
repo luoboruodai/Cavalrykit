@@ -2,7 +2,14 @@
 
 ## 0.1.1 — 2026-10-12
 
-### UI and settings / 界面与设置
+### build 14 — 2026-10-13 / 后一轮界面要求
+- Replace always-visible row actions with a three-dot menu, safe separation and removal confirmation.
+- Add whole-card staggered upward reveal, fixed interaction targets, reference-style expanding row surfaces and interruptible modal entrance/exit.
+- Center the actual search glyphs, add sixteen localized occasional hints (20s default / 4s suggestion), a green hover surface and a refresh tile.
+- Put status beside the brand, make all four shortcut accents green, clarify drop-surface contrast and use the soft import material for Save.
+- Close disabled background row popups when a modal opens; preserve reduced motion, filtering caches and virtualized rendering.
+
+### UI and settings / 界面与设置（此前实现，部分由 build 14 调整）
 - Integrate brand/status into the left rail; put the file action below the soft drop surface, without ellipsis.
 - Stack four shortcut cards vertically with consistent type-colored accents.
 - Use green scripts / blue plugins across row icons, accent bars, hover outlines and count badges.
@@ -47,7 +54,7 @@
 - Present all import results in a bounded modal dialog; keep the main layout stable.
 - Clip independent columns and bound long labels/details; support small windows.
 - Preserve the original icon artwork; add macOS optical margins with full Retina ICNS and 15 Windows ICO frames.
-- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 13.
+- Separate in-app branding from macOS Dock padding; retain the icon revision and advance the redesigned macOS bundle to build 14.
 - Add accessible labels to custom buttons.
 - Add explicit Refresh and prevent closing during an active I/O operation/file picker.
 

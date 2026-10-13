@@ -8,7 +8,7 @@ pub const LG: f32 = 24.0;
 pub const CONTROL: f32 = 40.0;
 pub const SEARCH_HEIGHT: f32 = 44.0;
 pub const ROW: f32 = 64.0;
-pub const HEADER: f32 = 56.0;
+pub const HEADER: f32 = 40.0;
 pub const RADIUS: u8 = 6;
 pub const CARD_RADIUS: u8 = 8;
 #[derive(Clone, Copy, Debug)]
@@ -215,8 +215,15 @@ pub fn category(p: Palette, plugin: bool) -> Category {
     Category { color, tint }
 }
 pub fn helper_ink(p: Palette) -> Color32 {
-    readable(mix(p.muted, p.panel, 0.32), p.panel, 4.5)
+    readable(mix(p.muted, p.panel, 0.42), p.panel, 4.5)
 }
+pub fn drop_surface(p: Palette) -> Color32 {
+    mix(p.panel, p.surface, 0.65)
+}
+pub fn placeholder_ink(p: Palette) -> Color32 {
+    readable(mix(p.muted, p.panel, 0.18), p.panel, 4.5)
+}
+
 pub fn count_badge(ui: &egui::Ui, rect: egui::Rect, label: &str, tone: Category) {
     ui.painter().rect_filled(rect, 6, tone.tint);
     let g = ui
@@ -289,10 +296,25 @@ pub fn shortcut(
 }
 /// Full-width, soft-tinted action below the drop surface. Icon/label share one hit region.
 pub fn import_action(ui: &mut egui::Ui, label: &str, tone: Category, p: Palette) -> egui::Response {
-    let (rect, r) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), SEARCH_HEIGHT),
-        egui::Sense::click(),
-    );
+    soft_action(
+        ui,
+        label,
+        super::icons::Icon::Import,
+        tone,
+        p,
+        ui.available_width(),
+    )
+}
+/// Shared material for import and Save. The footer uses intrinsic width, not a full row.
+pub fn soft_action(
+    ui: &mut egui::Ui,
+    label: &str,
+    icon: super::icons::Icon,
+    tone: Category,
+    p: Palette,
+    width: f32,
+) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(Vec2::new(width, SEARCH_HEIGHT), egui::Sense::click());
     r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
     let amount = motion(
         ui,
@@ -322,7 +344,7 @@ pub fn import_action(ui: &mut egui::Ui, label: &str, tone: Category, p: Palette)
             egui::pos2(left + 9.0, rect.center().y + press),
             Vec2::splat(18.0),
         ),
-        super::icons::Icon::Import,
+        icon,
         tone.color,
     );
     ui.painter().galley(
@@ -648,14 +670,16 @@ pub fn modal_state<R>(
     contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::ModalResponse<R> {
     let id = egui::Id::new(id);
-    let progress = super::motion::modal_progress(ctx, id, closing, 0.28);
+    let progress =
+        super::motion::modal_progress(ctx, id, closing, if closing { 0.24 } else { 0.38 });
     let surface = super::motion::phase(progress, 0.0, 0.70);
     let content = super::motion::phase(progress, 0.10, 1.0);
     egui::Modal::new(id)
-        .area(egui::Modal::default_area(id).fade_in(false).anchor(
-            egui::Align2::CENTER_CENTER,
-            [0.0, 8.0 * (1.0 - super::motion::cubic_out(progress))],
-        ))
+        .area(
+            egui::Modal::default_area(id)
+                .fade_in(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 18.0 * (1.0 - progress)]),
+        )
         .backdrop_color(Color32::from_black_alpha((90.0 * surface) as u8))
         .frame(
             egui::Frame::new()
@@ -667,7 +691,7 @@ pub fn modal_state<R>(
                     spread: 0,
                     color: Color32::from_black_alpha((90.0 * surface) as u8),
                 })
-                .corner_radius(CARD_RADIUS)
+                .corner_radius(14)
                 .inner_margin(LG),
         )
         .show(ctx, |ui| {
@@ -746,6 +770,63 @@ pub fn icon_button(
     } else {
         response
     }
+}
+/// A quiet, always visible refresh tile with bounded feedback rather than an idle spinner.
+pub fn refresh_button(ui: &mut egui::Ui, label: &str, p: Palette) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(Vec2::splat(SEARCH_HEIGHT), egui::Sense::click());
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
+    let active = motion(
+        ui,
+        r.id.with("hover"),
+        ui.is_enabled() && (r.hovered() || r.has_focus()),
+    );
+    let press = motion(
+        ui,
+        r.id.with("press"),
+        ui.is_enabled() && r.is_pointer_button_down_on(),
+    );
+    let tone = category(p, false);
+    ui.painter().rect(
+        rect,
+        10,
+        mix(p.panel, tone.tint, active),
+        egui::Stroke::new(if r.has_focus() { 1.5 } else { active }, tone.color),
+        egui::StrokeKind::Inside,
+    );
+    let now = ui.input(|i| i.time);
+    if r.clicked() {
+        ui.data_mut(|d| d.insert_temp(r.id.with("spin"), now));
+    }
+    let elapsed = ui
+        .data(|d| d.get_temp::<f64>(r.id.with("spin")))
+        .map(|at| (now - at) as f32);
+    let spin = elapsed
+        .filter(|t| *t < 0.38 && ui.style().animation_time > 0.0)
+        .map(|t| {
+            ui.ctx().request_repaint();
+            super::motion::cubic_out(t / 0.38) * std::f32::consts::TAU
+        })
+        .unwrap_or(0.0);
+    let center = rect.center() + Vec2::new(0.0, press);
+    let points = (0..=22)
+        .map(|i| {
+            let a = 0.5 + i as f32 * 5.0 / 22.0 + spin;
+            center + Vec2::angled(a) * 6.5
+        })
+        .collect::<Vec<_>>();
+    let stroke = egui::Stroke::new(1.4_f32, mix(p.muted, tone.color, active));
+    let arrow = |v: Vec2| center + egui::emath::Rot2::from_angle(spin) * v;
+    ui.painter().add(egui::Shape::line(points, stroke));
+    ui.painter().add(egui::Shape::line(
+        vec![
+            arrow(Vec2::new(5.0, -6.0)),
+            arrow(Vec2::new(5.0, -1.0)),
+            arrow(Vec2::new(0.0, -1.0)),
+        ],
+        stroke,
+    ));
+    r.on_hover_text(label)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 pub fn nav_button(
     ui: &mut egui::Ui,

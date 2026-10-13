@@ -2,6 +2,8 @@
 use egui::{Color32, Painter, Pos2, Rect, Stroke, Vec2};
 #[derive(Clone, Copy, Debug)]
 pub enum Icon {
+    More,
+    Check,
     Library,
     Script,
     Plugin,
@@ -35,6 +37,15 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
         );
     };
     match icon {
+        Icon::More => {
+            for y in [-5.0, 0.0, 5.0] {
+                p.circle_filled(point(0.0, y), 1.3 * scale, color);
+            }
+        }
+        Icon::Check => {
+            line((-6.0, 0.0), (-1.5, 4.5));
+            line((-1.5, 4.5), (7.0, -5.0));
+        }
         Icon::Library => {
             for (x, y) in [(-4.5, -4.5), (4.5, -4.5), (-4.5, 4.5), (4.5, 4.5)] {
                 box_at(x, y, 6.0, 6.0);

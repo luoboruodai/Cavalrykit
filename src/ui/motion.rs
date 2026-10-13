@@ -89,36 +89,55 @@ struct ModalMotion {
     closing: bool,
     started: f64,
     from: f32,
+    last_pass: u64,
+    seconds: f32,
 }
 pub fn modal_progress(ctx: &Context, id: Id, closing: bool, seconds: f32) -> f32 {
     let now = ctx.input(|i| i.time);
+    let pass = ctx.cumulative_pass_nr();
     let target = if closing { 0.0 } else { 1.0 };
+    let sample = |s: ModalMotion| {
+        let k = cubic_out(((now - s.started) as f32 / s.seconds.max(0.001)).clamp(0.0, 1.0));
+        s.from + ((if s.closing { 0.0 } else { 1.0 }) - s.from) * k
+    };
     let state = ctx.data_mut(|d| {
         let key = id.with("modal-motion");
         let mut s = d.get_temp::<ModalMotion>(key).unwrap_or(ModalMotion {
-            closing: false,
+            closing,
             started: now,
             from: 0.0,
+            last_pass: pass,
+            seconds,
         });
-        if s.closing != closing {
-            let old = if s.closing { 0.0 } else { 1.0 };
+        if pass > s.last_pass + 1 {
             s = ModalMotion {
                 closing,
                 started: now,
-                from: old,
+                from: 0.0,
+                last_pass: pass,
+                seconds,
+            };
+        } else if s.closing != closing {
+            s = ModalMotion {
+                closing,
+                started: now,
+                from: sample(s),
+                last_pass: pass,
+                seconds,
             };
         }
+        s.last_pass = pass;
         d.insert_temp(key, s);
         s
     });
     if ctx.style().animation_time == 0.0 {
         return target;
     }
-    let k = cubic_out(((now - state.started) as f32 / seconds.max(0.001)).clamp(0.0, 1.0));
-    let value = state.from + (target - state.from) * k;
+    let value = sample(state);
     if (value - target).abs() > 0.001 {
         ctx.request_repaint();
     }
+    super::diagnostics::sample(ctx, "modal", id, target, value);
     value
 }
 pub fn cubic_out(t: f32) -> f32 {
@@ -142,6 +161,44 @@ pub fn settle(t: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn modal_exit_starts_at_the_current_value_and_reopening_replays_entrance() {
+        let ctx = Context::default();
+        let id = Id::new("test-modal");
+        let mut values = Vec::new();
+        for (time, close, show) in [
+            (0.0, false, true),
+            (0.08, false, true),
+            (0.08, true, true),
+            (0.14, true, true),
+            (0.5, true, false),
+            (0.6, false, true),
+            (1.1, false, true),
+        ] {
+            let _ = ctx.run(
+                egui::RawInput {
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ctx| {
+                    if show {
+                        values.push(modal_progress(
+                            ctx,
+                            id,
+                            close,
+                            if close { 0.24 } else { 0.38 },
+                        ));
+                    }
+                },
+            );
+        }
+        assert_eq!(values[0], 0.0);
+        assert!(values[1] > 0.0 && values[1] < 1.0);
+        assert_eq!(values[1], values[2]);
+        assert!(values[3] < values[2]);
+        assert_eq!(values[4], 0.0);
+        assert_eq!(values[5], 1.0);
+    }
     #[test]
     fn reveal_restarts_when_interrupted_or_reopened_and_stops_at_the_end() {
         let ctx = Context::default();
