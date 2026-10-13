@@ -182,29 +182,72 @@ fn small_windows_frames_have_optical_coverage_not_a_master_resize() {
 }
 
 #[test]
-fn approved_visual_anchor_and_windows_resources_stay_frozen() {
+fn metallic_frames_track_approved_source_and_each_canonical_output() {
     use sha2::{Digest, Sha256};
     let design: serde_json::Value =
         serde_json::from_slice(include_bytes!("../assets/icon-design.json")).unwrap();
     let digest = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
-    let mac = include_bytes!("../assets/icon-macos.png");
-    let master = frame("macos", 1024);
-    assert_eq!(mac.as_slice(), master);
+    let source = include_bytes!("../assets/icon-source-approved-a-mac.png");
+    let source_app = include_bytes!("../assets/icon-source-approved-a-app.png");
     assert_eq!(
-        digest(mac),
+        digest(source),
         design["approved_mac_preview_sha256"].as_str().unwrap()
     );
-    let mac_brand = frame("macos-brand", 1024);
     assert_eq!(
-        digest(&mac_brand),
+        digest(source_app),
         design["approved_mac_inapp_master_sha256"].as_str().unwrap()
     );
-    assert_eq!(
-        digest(include_bytes!("../assets/icon.ico")),
-        design["windows_approved_ico_sha256"].as_str().unwrap()
+    let original = rgba(source);
+    let final_master = rgba(include_bytes!("../assets/icon-macos.png"));
+    for (x, y) in [(230, 500), (512, 512), (740, 400), (512, 700), (620, 250)] {
+        assert_eq!(
+            original.get_pixel(x, y),
+            final_master.get_pixel(x, y),
+            "glyph/interior drift at ({x}, {y})"
+        );
+    }
+    let frames = design["canonical_frames_sha256"].as_object().unwrap();
+    for (file, expected) in frames {
+        let bytes = std::fs::read(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), file)).unwrap();
+        assert_eq!(
+            digest(&bytes),
+            expected.as_str().unwrap(),
+            "wrong frame: {file}"
+        );
+    }
+    assert_ne!(original, final_master, "new satin material not applied");
+}
+
+#[test]
+fn metallic_bezel_matches_material_request_without_erasing_small_icon_glyphs() {
+    let before = rgba(include_bytes!("../assets/icon-source-approved-a-mac.png"));
+    let after = rgba(include_bytes!("../assets/icon-macos.png"));
+    assert!(
+        after.get_pixel(512, 112)[0] >= before.get_pixel(512, 112)[0] + 40,
+        "macOS satin border must be visibly silver, not the old almost-black bevel"
     );
-    assert_eq!(
-        digest(include_bytes!("../assets/icon.png")),
-        design["windows_approved_brand_sha256"].as_str().unwrap()
-    );
+    assert_eq!(after.get_pixel(512, 180), before.get_pixel(512, 180));
+    for n in [16, 20, 24, 30, 32, 48, 64, 128, 256] {
+        let source = rgba(&frame("windows-source", n));
+        let styled = rgba(&frame("windows", n));
+        assert_ne!(source, styled, "metallic material missing at {n}px");
+        let bright_glyph = |image: &RgbaImage| {
+            image
+                .enumerate_pixels()
+                .filter(|(x, y, p)| {
+                    *x > n / 8
+                        && *x < 7 * n / 8
+                        && *y > n / 8
+                        && *y < 7 * n / 8
+                        && p[0] > 185
+                        && p[3] > 190
+                })
+                .count()
+        };
+        assert_eq!(
+            bright_glyph(&styled),
+            bright_glyph(&source),
+            "small symbol coverage changed at {n}px"
+        );
+    }
 }

@@ -1,4 +1,4 @@
-# CavalryKit 0.1.1 / build 19 · 图标视觉锚点还原
+# CavalryKit 0.1.1 / build 20 · Cavalry 风格材质与图标验收
 
 本页保留 build16 的界面矩阵，Build17 增加图标资源矩阵；界面实现未重新设计。
 
@@ -58,6 +58,16 @@
 - 本轮发现版本漂移而非单纯图标缓存：首轮 A 预览原始 SHA-256 `d9563abce6201f7f03a62b4442ad6ba0765426903a38519906bb2b97943ec5f2`，build18 macOS 主图为不同字节的 R1 描摹稿。虽然构图相近，但笔画/主体占比不同，不能写成“只需重装”。
 - build19 的 macOS 1024 主图与已确认 A 完全同字节；ICNS每个尺寸由它直接生成。macOS应用内使用同轮A品牌稿；Windows矢量优化、18帧ICO和Windows应用内图标不变。仅网页的白色圆角展示背景不属于图标内容。
 - 验收分开：产物图标帧真实字节/安装签名、正式 macOS 系统入口与应用内显示；Windows原生DPI仍未实测。
+
+## Build 20 Cavalry 图标材质参考增量（2026-10-14）
+
+| ID | 当前要求与替代关系 | 验收 |
+|---|---|---|
+| I20-1 | **替代** build19 的无银边A外层材质；保留A自己的文件夹/勾选/插件图形。参考Cavalry的灰银边、上沿高光、圆角浮雕与深灰内面，不复制第三方C字形/图标像素。 | 比较用户本轮参考图、原A源图与新自绘材质；Mac源图及安装ICNS逐帧检查，Finder/系统入口原生观察。 |
+| I20-2 | Windows继续18档逐尺寸光学资源；在各自源帧上生成按尺寸缩放的边框，不将256帧缩小代替小帧。 | 逐帧检查图形亮像素数不降、ICO和PE真实嵌入资源相同；浏览器DPR不替代Windows实机。 |
+| I20-3 | 保留已认可的CavalryKit主界面/设置布局，Mac/Windows应用内品牌分别使用对应材质资源。 | 原生主窗口+设置受影响范围、用户库/偏好/宿主保护；真实应用包身份与图标需求分别过门。 |
+
+**Build20 实际结果**：自动回归 115 项通过、1 项真实目录测试 ignored；正式 macOS build20 主窗口原生观察到新银灰包边图标，`/Applications/CavalryKit.app` 与 `dist/CavalryKit.app` payload 一致。Windows 使用本机 MinGW 生成 x64 GUI 包并通过 18 帧 PE/ICO、PerMonitorV2、版本和无外部 VCRUNTIME/MSVCP 检查；Windows 实机未执行。对照图与日志保存在 `private/icon-metallic-bezel-20261014/`。
 
 ## 尼尔森十项复查
 

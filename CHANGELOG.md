@@ -2,6 +2,11 @@
 
 ## 0.1.1 — 2026-10-13
 
+### build 20 / Cavalry 材质语言的边框调整
+- Add an independently generated satin-silver perimeter, rounded relief and inner depth to CavalryKit's own approved file/check/plugin artwork, guided by the supplied Cavalry icon screenshot without copying the C symbol.
+- Keep Mac Dock/window/in-app masters distinct from 18 optical-size Windows frames and the Windows in-app icon; preserve the original approved A art as the source.
+- Verify each frame's source checksum and installed platform bundle, keeping browser appearance separate from native macOS/Windows rendering.
+
 ### build 19 / 恢复已确认的 macOS A 视觉锚点
 - Restore the exact approved first-round A master as the macOS Dock/window icon, and derive each smaller ICNS frame once from that master.
 - Use the same approved A artwork for the macOS in-app brand; preserve the Windows 18-frame ICO and Windows in-app artwork byte-for-byte.

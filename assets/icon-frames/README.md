@@ -1,23 +1,20 @@
-# Approved optical icon sources
+# Approved metallic icon sources
 
-These PNGs are the canonical frames of the approved Graphite Halo icon.
-The macOS master is the exact A-direction preview the user selected, and each
-smaller macOS frame is independently resized once from that approved raster;
-the Windows optical frames remain individually rendered from their vector paths.
-`../icon-glyph.svg` preserves the Windows scalable geometric tracing; the macOS
-source is the approved raster A master and is not regenerated from this SVG.
-`../icon-source.ico` preserves the supplied raster reference, and
-`../icon-design.json` records the material and source checksums.
+The user-provided Cavalry example supplies a **material direction**: rounded dark
+face, satin silver border, top-edge highlight and shadow. The CavalryKit folder,
+check, arrow and plugin mark come from the original approved CavalryKit assets,
+not from the third-party C icon. `../icon-source-approved-a-mac.png` and
+`../icon-source-approved-a-app.png` preserve the approved A artwork.
 
-- `windows/`: 18 distinct physical-pixel sizes. Small frames have optical stroke
-  coverage and pixel alignment; do not replace them with resizes of the 256px icon.
-- `macos/`: approved A-direction Dock master with separate margins/shadows,
-  resized once per target from 16 to 1024px.
-- `macos-brand/`: A-direction unpadded macOS in-app branding.
-- `app/`: Windows unpadded brand artwork, unchanged by macOS restoration.
+`windows-source/` stores the prior 18 independently rendered optical-size PNGs.
+`app-source/` stores the prior in-app Windows artwork. `macos/`,
+`macos-brand/`, `windows/`, and `app/` contain the newly styled canonical
+output frames. The Windows small-size symbol pixels are preserved; each frame
+gets its own proportional border rather than being resized from a 256px icon.
 
-`cargo run --locked --example import_icon` assembles ICO/ICNS containers from these
-approved PNG bytes and copies the appropriate brand/window PNGs. It does not redraw
-or sharpen the icon, and does not regenerate small frames from the uploaded ICO.
-A material/geometry change requires a new source render and visual approval before
-updating this canonical set. Normal app builds require no extra graphics runtime.
+When the approved style changes, run `scripts/render_platform_icons.py` with
+Pillow and NumPy to regenerate each canonical frame. Normal builds need no
+Python graphics runtime: `cargo run --locked --example import_icon -- --check`
+checks and assembles the approved PNGs into ICO/ICNS and platform images.
+Metadata and per-frame hashes live in `../icon-design.json`. Do not overwrite
+the sources or quietly reuse an older icon's frame sequence.
