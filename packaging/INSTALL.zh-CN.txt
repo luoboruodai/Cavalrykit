@@ -1,0 +1,45 @@
+CavalryKit 0.1.1 — 安装、升级与恢复（离线指南）
+English: INSTALL.en.txt（同目录）
+发布说明: RELEASE_NOTES.md（同目录，可用文本编辑器阅读）
+
+适用平台
+- macOS Apple Silicon；内部build21。此DMG不是Intel通用包。
+- Windows10/11 x64；解压后有CavalryKit.exe和Install-CavalryKit.cmd。
+
+macOS安装 / 从0.1.0升级
+1. 保存正在进行的操作，退出CavalryKit；不需要为替换工具而强制退出Cavalry。
+2. 打开CavalryKit-0.1.1-mac-arm64.dmg。
+3. 将CavalryKit.app拖到Applications，替换已有的同名应用。只有确认备份后才替换旧版。
+4. 推出磁盘镜像，从/Applications/CavalryKit.app启动，不从旧DMG或改名副本启动。
+5. 此版本ad-hoc签名但未公证，系统可能提示无法验证开发者。请核对来源，不关闭系统安全保护。
+
+Windows安装 / 从0.1.0升级
+1. 完整解压CavalryKit-0.1.1-win-x64.zip，不直接在压缩包里运行。
+2. 关闭CavalryKit，运行Install-CavalryKit.cmd。
+3. 固定入口为%LOCALAPPDATA%\Programs\CavalryKit\CavalryKit.exe。
+4. 后续使用桌面/开始菜单的CavalryKit快捷方式。任务栏仍显示旧图标时，可取消固定后从新快捷方式重新固定。
+5. 安装器更新前会备份旧EXE到%LOCALAPPDATA%\CavalryKit\Backups。其他便携副本不会自动删除。
+6. 没有商业代码签名证书，可能显示SmartScreen提示；程序不会禁用系统保护。
+
+设置、用户库与恢复
+- 升级工具不删除/迁移Cavalry的Scripts及Third-Party/Plugins，也不重置CavalryKit偏好。
+- macOS偏好: ~/Library/Application Support/CavalryKit/preferences.json。
+- Windows偏好: %APPDATA%\CavalryKit\preferences.json。
+- 升级前可额外备份自己的库和偏好。恢复旧版时先退出工具，仅恢复旧程序文件；不要把旧库/旧偏好覆盖到当前新内容上。
+- macOS可从自己保留的上一版.app/安装包恢复同一路径；Windows可解压Backups中对应旧EXE，关闭工具后恢复到固定路径。
+
+基本操作
+拖入.js/.jsx/.jsc、插件目录或受支持归档；同名选择覆盖/保留两者/跳过。结果在独立弹窗中展示。
+仅安装可信内容。工具不执行导入的脚本、不上传内容。
+需要重启Cavalry时先保存工程；只请求正常退出，不强制关闭。停止等待不撤回已发送的宿主退出请求。
+Cmd/Ctrl+F搜索；Cmd/Ctrl+O选择；Cmd/Ctrl+R刷新；Cmd/Ctrl+,设置；Esc取消。
+
+兼容性与验证
+默认wgpu；旧显卡必要时可设置CAVALRYKIT_RENDERER=glow后启动。
+托管macOS/Windows CI覆盖测试和打包，Windows另测安装/回滚；真实Windows GPU、多屏DPI、任务栏/宿主体验仍未人工全量验收。
+校验Release同目录SHA256SUMS.txt中的包hash。只有一个包时只比较对应行，不把另一个缺失包误认为文件损坏。
+
+联网资料（离线使用不依赖以下链接）
+版本发布: https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.1
+中文说明: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.md
+English: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.en.md

@@ -20,7 +20,7 @@ CavalryKit 0.1.1 — Windows x64
 默认渲染器和兼容模式都建议安装最新的显卡驱动。
 
 本版本未购买代码签名证书，可能触发 SmartScreen 提示；不会禁用系统保护。
-验证范围请参阅仓库 RELEASE_NOTES.md。交叉编译不代表 Windows 实机验证。
+本包同目录含 INSTALL.zh-CN.txt、INSTALL.en.txt 和 RELEASE_NOTES.md，均可离线阅读。托管原生CI通过不代表所有Windows实机图形体验已验证。
 
 设置：支持简体中文、English、日本語、한국어，深灰/明亮/自定义配色、缩放和减少动效。
 设置实时预览，取消恢复旧值，保存后才保留。

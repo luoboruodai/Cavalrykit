@@ -2,6 +2,13 @@
 
 ## 0.1.1 — 2026-10-14
 
+### 正式发布 / Release summary
+- Publish complete Chinese/English README and offline install/upgrade/recovery guides; include bilingual release notes inside both platform packages.
+- Keep the approved build21/V6 runtime unchanged; freeze the tested release commit and validate downloaded release attachments before local handoff.
+- Native macOS/Windows CI validates tests, platform packaging and source audit; Windows additionally validates installer/rollback. Physical Windows GPU/taskbar/mixed-DPI checks remain outside this evidence.
+
+以下 build 记录是研发历史；最终发布采用 build21 / V6，不包含已退回的图标方案。
+
 ### build 21 / 正式采用已确认的 V6 图标
 - Apply the explicitly approved D / V6 icon pixels to macOS Dock/window, both in-app brands, and all 18 Windows ICO frames; do not apply later rejected variants.
 - Freeze per-frame and assembled-resource hashes. Replace the retired metallic renderer with validation/assembly so normal builds cannot silently redraw the old border.

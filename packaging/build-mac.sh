@@ -7,8 +7,17 @@ export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$PWD=/build/cavalrykit"$'\x1
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
 ARCH="$(uname -m)"
 [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+mkdir -p dist
+WORK="$(mktemp -d "dist/.package-mac.XXXXXX")"
+MOUNT="$WORK/mounted"
+cleanup() {
+    if mount | grep -F " on $PWD/$MOUNT " >/dev/null; then hdiutil detach -quiet "$MOUNT"; fi
+    rm -rf "$WORK"
+}
+trap cleanup EXIT
+if [ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' packaging/Info.plist)" != "$VERSION" ]; then
+    echo "Info.plist version differs from Cargo.toml" >&2; exit 1
+fi
 # Reject stale generated bundles; never downsample away approved optical-size frames.
 cargo run --locked --example import_icon -- --check
 # Changing the resource name with the icon content avoids reusing an older
@@ -33,9 +42,28 @@ chmod +x "$APP/Contents/MacOS/CavalryKit"
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP"
 plutil -lint "$APP/Contents/Info.plist"
+for name in INSTALL.zh-CN.txt INSTALL.en.txt RELEASE_NOTES.md; do
+    source="packaging/$name"
+    [ "$name" = RELEASE_NOTES.md ] && source="$name"
+    head -1 "$source" | grep -F "CavalryKit $VERSION" >/dev/null
+    grep -F "/releases/tag/v$VERSION" "$source" >/dev/null
+    cp "$source" "$WORK/dmg/$name"
+done
+ln -s /Applications "$WORK/dmg/Applications"
+CANDIDATE="$WORK/candidate.dmg"
+hdiutil create -quiet -volname "CavalryKit $VERSION" -srcfolder "$WORK/dmg" -format UDZO "$CANDIDATE"
+hdiutil verify -quiet "$CANDIDATE"
+mkdir "$MOUNT"
+hdiutil attach -quiet -readonly -nobrowse -mountpoint "$MOUNT" "$CANDIDATE"
+codesign --verify --deep --strict "$MOUNT/CavalryKit.app"
+diff -qr "$APP" "$MOUNT/CavalryKit.app"
+for name in INSTALL.zh-CN.txt INSTALL.en.txt RELEASE_NOTES.md; do
+    cmp "$WORK/dmg/$name" "$MOUNT/$name"
+done
+[ "$(readlink "$MOUNT/Applications")" = /Applications ]
+hdiutil detach -quiet "$MOUNT"
+mv -f "$CANDIDATE" "dist/CavalryKit-$VERSION-mac-$ARCH.dmg"
 if [ -e dist/CavalryKit.app ]; then mv dist/CavalryKit.app "$WORK/previous-build.app"; fi
 ditto "$APP" dist/CavalryKit.app
-ln -s /Applications "$WORK/dmg/Applications"
-hdiutil create -quiet -volname "CavalryKit $VERSION" -srcfolder "$WORK/dmg" -ov -format UDZO "dist/CavalryKit-$VERSION-mac-$ARCH.dmg"
 shasum -a 256 "dist/CavalryKit-$VERSION-mac-$ARCH.dmg"
 echo "Build complete. To upgrade, quit CavalryKit and replace the existing app in Applications."

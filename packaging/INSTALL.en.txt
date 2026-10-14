@@ -1,0 +1,45 @@
+CavalryKit 0.1.1 — Installation, upgrade and recovery (offline guide)
+Simplified Chinese: INSTALL.zh-CN.txt (same directory)
+Release notes: RELEASE_NOTES.md (same directory; readable in any text editor)
+
+Platforms
+- Apple Silicon macOS; internal build 21. The DMG is not an Intel universal package.
+- Windows 10/11 x64; the ZIP contains CavalryKit.exe and Install-CavalryKit.cmd.
+
+macOS install / upgrade from 0.1.0
+1. Finish active work and quit CavalryKit. Replacing this tool does not require force-quitting Cavalry.
+2. Open CavalryKit-0.1.1-mac-arm64.dmg.
+3. Drag CavalryKit.app to Applications and replace the existing same-named app after confirming you have a backup.
+4. Eject the image and start /Applications/CavalryKit.app, not an older DMG or renamed copy.
+5. The app is ad-hoc signed but not notarized. macOS may warn about an unverified developer. Verify the source; do not disable system protections.
+
+Windows install / upgrade from 0.1.0
+1. Fully extract CavalryKit-0.1.1-win-x64.zip. Do not run directly inside the archive.
+2. Close CavalryKit, then run Install-CavalryKit.cmd.
+3. The fixed entry point is %LOCALAPPDATA%\Programs\CavalryKit\CavalryKit.exe.
+4. Use the desktop or Start-menu CavalryKit shortcut. For a stale taskbar icon, unpin it and pin the updated shortcut.
+5. Before updating, the installer backs up the old EXE to %LOCALAPPDATA%\CavalryKit\Backups. Other portable copies are not deleted.
+6. There is no commercial code-signing certificate; SmartScreen may show a warning. The program does not disable security features.
+
+Settings, library and recovery
+- Upgrading the tool does not delete/migrate Cavalry's Scripts or Third-Party/Plugins and does not reset CavalryKit preferences.
+- macOS preferences: ~/Library/Application Support/CavalryKit/preferences.json.
+- Windows preferences: %APPDATA%\CavalryKit\preferences.json.
+- Back up your own library and preferences before upgrading. To restore an older program, quit the tool and restore only its program files. Do not overwrite newer library contents or preferences with an old snapshot.
+- On macOS, restore your previous app/package to the same Applications path. On Windows, extract the old EXE from the appropriate Backups archive and restore it to the fixed path while the tool is closed.
+
+Basic use
+Drop .js/.jsx/.jsc files, plugin folders or supported archives; resolve conflicts with Replace/Keep both/Skip. Results appear in a separate dialog.
+Install only trusted content. CavalryKit does not execute imported scripts or upload them.
+Save your project before requesting a Cavalry restart. Only normal exit is requested; no force kill. Stop waiting does not withdraw an exit request already sent to the host.
+Cmd/Ctrl+F search; Cmd/Ctrl+O select files; Cmd/Ctrl+R refresh; Cmd/Ctrl+, settings; Esc cancel.
+
+Compatibility and verification
+wgpu is the default. An older graphics driver may need CAVALRYKIT_RENDERER=glow before startup.
+Hosted macOS/Windows CI covers tests and packaging; Windows also covers installer/rollback fixtures. Physical Windows GPU, multiple-monitor DPI, taskbar and host interactions remain manually unverified.
+Compare the package hash with SHA256SUMS.txt from the same release. If you downloaded only one platform, compare only that line; a missing other-platform file does not mean your download is corrupt.
+
+Online references (not required for offline use)
+Release: https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.1
+English guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.en.md
+Chinese guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.md

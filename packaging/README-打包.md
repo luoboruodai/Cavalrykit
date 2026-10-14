@@ -26,7 +26,7 @@ packaging\build-win.bat
 ```
 
 `build.rs` 强制嵌入 ICO、版本资源和 PerMonitorV2 manifest，资源编译失败时中止构建。
-`package-win.ps1` 生成包含 EXE、固定路径安装器和说明的版本化 ZIP。
+`package-win.ps1` 生成包含 EXE、固定路径安装器和说明的版本化 ZIP（8个成员）；使用独立临时候选并回读成员和每个文件内容，通过后才替换旧 ZIP。
 安装器只操作当前用户安装路径和固定名称快捷方式，更新前要求用户关闭应用，不擅自杀进程、不修改系统文件关联。
 
 ## macOS 交叉构建 Windows
@@ -69,5 +69,9 @@ Windows 默认静态链接 VC++ 运行时；原生构建使用 encoded flags，�
 ## 本版验证入口
 
 `cargo test --all-targets --all-features --locked` 和严格 Clippy 同时验证生产/预览代码。Windows 原生 `packaging/test-installer-win.ps1` 在临时目录验证原位升级、图标快捷方式、恢复包与失败路径，不启动 Cavalry。CI 工作流为 `.github/workflows/desktop.yml`，只有 Contents 读取权限，没有发布或凭据写入权限。
+
+两端安装包在根目录提供 `INSTALL.zh-CN.txt`、`INSTALL.en.txt` 和双语 `RELEASE_NOTES.md`；不把带源码相对链接的 README 当作离线指南。macOS DMG 在验证镜像、签名和回读内容后替换旧包。
+
+`python3 -m unittest discover -s packaging -p 'test_release_packaging.py'` 验证Windows归档成员、指南版本/链接、候选失败保留旧包和固定环境重复打包；PS5.1打包另外由原生Windows CI实际执行。
 
 安装包包含 `THIRD-PARTY-NOTICES.txt`，保留随应用分发的字体授权。`ui-preview` 不编译进正常 release，仅用于输出没有真实用户内容的 UI 图片。

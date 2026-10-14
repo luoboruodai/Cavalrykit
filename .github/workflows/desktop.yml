@@ -31,6 +31,8 @@ jobs:
         run: cargo clippy --all-targets --all-features --locked -- -D warnings
       - name: Tests (synthetic fixtures; never starts Cavalry)
         run: cargo test --all-targets --all-features --locked
+      - name: Release packaging regression tests
+        run: python3 -m unittest discover -s packaging -p 'test_release_packaging.py'
       - name: Windows installer and rollback checks
         if: runner.os == 'Windows'
         shell: powershell

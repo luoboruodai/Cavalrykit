@@ -9,7 +9,7 @@ import sys
 from pathlib import Path, PurePosixPath
 
 ROOT_FILES = {'.github/workflows/desktop.yml', '.cargo/config.toml', '.gitignore', '.gitattributes', 'Cargo.toml', 'Cargo.lock', 'build.rs',
-              'README.md', 'PRODUCT.md', 'CHANGELOG.md', 'RELEASE_NOTES.md'}
+              'README.md', 'README.en.md', 'PRODUCT.md', 'CHANGELOG.md', 'RELEASE_NOTES.md'}
 DIRECTORIES = {'src', 'tests', 'assets', 'packaging', 'examples', 'scripts'}
 RULES = {
     'private-key': re.compile(rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),

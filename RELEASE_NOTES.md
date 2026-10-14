@@ -1,82 +1,71 @@
 # CavalryKit 0.1.1
 
-## 本地 build 21 / Local build 21
+2026-10-14 · macOS build 21 · Apple Silicon / Windows x64
 
-正式采用人类确认的 D / V6 图标：macOS 图标、窗口、应用内品牌和 Windows 多尺寸资源一致。只更新图标及构建身份，不改已确认的界面或性能逻辑。旧金属边框生成器已改为批准资源校验/组装，避免打包回退。此为本地候选交付，不代表已远程发布；Windows 原生图标/DPI仍待实机验收。
+## 简体中文
 
-Adopts the explicitly approved D / V6 artwork without redesigning the interface or changing runtime behavior. Native Windows icon/DPI checks remain pending; this local build is not a remote release.
+### 从 0.1.0 升级
 
-> Local release candidate / 本地待发布候选：尚未创建 v0.1.1 Release，等待界面确认与发布权限条件满足。
+0.1.1 是一次界面、响应性和安全交接更新。最终采用已确认的 D／V6 图标；不改变 Cavalry 工程格式，不执行导入脚本，也不迁移或删除现有用户库。
 
-## 中文
+- 将识别、解压、复制、扫描、卸载、进程查询移出界面线程；缓存过滤结果、虚拟化列表，降低大型库重复布局开销。
+- 恢复并统一左侧导入工作区、独立选择按钮、宿主状态和纵向快捷入口；右侧保留筛选与搜索，结果／失败信息使用独立有界弹窗。
+- 四语界面、区域字体、混排文件名；深灰／明亮／自定义配色和即时设置预览，取消不落盘。
+- 分阶段、可打断的筛选／列表／悬停反馈，固定命中区域与减少动效；空闲后停止逐帧重绘。
+- 原生文件选择、同名冲突选择、覆盖暂存与恢复；Windows固定安装位置、旧EXE备份和快捷方式校验。
+- 安装后可请求安全重启 Cavalry；保存提示、超时、多实例或取消时不强杀宿主。
+- macOS Dock／窗口／应用内图标与Windows18档ICO全部使用批准资源；正常构建不再重画旧样式。
+- 修复原生Windows测试中的路径分隔符预期，以及PowerShell 5.1打包中文文件名的UTF-8 BOM问题。
+- 安装包附中英文离线指南；Release附件附SHA-256清单。
 
-**历史build20图标材质修正（已由V6取代）**：依据用户提供的 Cavalry 图标参考，把 CavalryKit 原图形置于深灰渐变内面，加上自绘银灰包边、高光和落影；没有复制 Cavalry 的 C 标志或图标像素。Mac/Win 使用各自尺寸资源，Windows 18 档高清光学源帧与图形保持可读。本轮只调整图标材质，已确认的主界面/设置布局不变。
+### 安装、保留设置与恢复
 
-**build19视觉锚点修正**：macOS 图标恢复为用户第一轮确认的 A「石墨柔光」原始预览字节，各 ICNS 小尺寸从该图一次生成；macOS 应用内品牌图来自对应 A 稿。Windows 18 帧 ICO/应用内图标保持不变。修正的是资源视觉版本漂移，不把它归因于系统缓存。
+下载本页平台安装附件，不要用自动生成的Source code压缩包安装。macOS退出CavalryKit后替换「应用程序」中的同名.app；Windows完整解压后运行Install-CavalryKit.cmd。原位更新保留Cavalry用户库和CavalryKit偏好；恢复旧程序时先退出当前程序，仅恢复备份的程序文件，不覆盖较新的用户库或设置。
 
-**build18修正**：针对 macOS 系统应用列表仍显示旧图标的问题，使用同一批准图标字节生成新的内容寻址图标资源名，重新构建并从本地DMG安装；没有重绘图标，也没有清理全局图标数据库。CavalryKit应用内图标、偏好与Cavalry宿主保持不变。
+离线细节见安装包内 `INSTALL.zh-CN.txt` / `INSTALL.en.txt`。macOS为ad-hoc签名、未公证；Windows未商业签名。不会禁用Gatekeeper、SmartScreen或其他系统保护。
 
-**build17最新调整**：应用已确认的 A「石墨柔光」图标方向；保留上传图形构图，独立重建可缩放线条并对 Windows 小尺寸做像素覆盖/对齐修正。Windows ICO 改为18档独立资源，macOS ICNS与应用内品牌图分开处理。正式包应用前保留源帧、hash和用户库/偏好基线，Windows实机DPI与系统缓存仍需单独验收。
+### 验证范围
 
-**build16最新调整**：行右侧显示/卸载/装饰三点同步响应整行悬停，热区保持不动；程序位置统一为线性图标。以深灰形式为锚点，专项调整明亮模式取消按钮、结果计数和运行状态框的灰度/材质，保留焦点与语义色。
+发布标签对应提交须通过macOS／Windows托管CI：格式、Clippy、测试、平台打包、源码审计；Windows另测安装器原位升级、备份、文件锁与失败回滚。已验证批准PNG→ICO／ICNS→PE／安装.app资源链。本机macOS安装入口、主窗口与品牌图标已观察，Dock以用户提供的真实截图核对。
 
-**延续build15的调整**：独立圆角侧栏、字形光学居中、搜索/刷新与卡片宽度对齐；恢复显示/卸载图标，三点只做弱灰装饰。入场不再叠加disabled灰化；完整内容字体统一中英文件名基线（安装包会增大）。运行绿点在前台轻呼吸，减少动效/后台暂停。设置保存去图标、重置去底板，安全说明降为小字，程序位置页统一路径/浏览/图标。
-
-**此前build14（其中三点菜单/保存图标由build15替代）**：三点操作菜单（卸载仍确认）、整卡逐个向上入场/悬停外扩、搜索字形居中与16条偶发提示、带底板刷新、品牌同行状态徽章、四个绿色快捷入口、较清晰的导入表面和同文件动作样式的保存按钮。默认提示占20秒、短提示4秒，输入/失焦/减少动效不轮换；设置入场/退出支持中途取消及重新播放。
-
-按标注调整：品牌与状态收进左侧，导入卡片下面独立放置无省略号的文件按钮，四入口竖排；筛选旁为类型色计数，刷新与搜索同行。脚本绿、插件蓝，显示和卸载现在为独立图标，三点仅装饰。导入区悬停为四边等宽细描边，图标/标题/格式说明协同过渡。
-
-
-此前build14/15补齐的真实交互：整块导入卡片可点击并响应普通悬停；搜索图标/留白可聚焦，设置开关可点整行；扩大热区并分隔安全与删除动作。已用原生坐标输入与短时诊断复查，不再把合成GIF当真机动效证明。
-
-
-本版更新双端性能、Cavalry 风格界面、可选安全重启和设置：
-- 后台串行处理识别、解压、安装、扫描和卸载；缓存筛选、虚拟列表、分页结果。
-- 深灰/绿色默认主题，明亮/自定义配色，四语言（中/英/日/韩），4/8/16/24pt 间距与右对齐弹窗操作。
-- 恢复左侧拖入区、右侧列表筛选与搜索；删除重复标题与常驻冗余说明。
-- 统一蓝灰深色/白色浅色材质、紧凑绿色按钮、分段筛选、弱边界搜索与轻卡片列表，避免元素各用一套风格。
-- 动效分阶段：筛选指示线平滑移动、内容显现、拖入装饰小回弹、弹窗表面和正文先后入场；减少动效立即切换，动画首帧即阻挡背后操作。
-- 简中/日/韩区域字形分别内嵌，并提供真实 Regular / Medium 字重；中英混排做缩放边界检查。
-- 左侧品牌同行状态徽章；安装后可选择重启/打开 Cavalry，也可稍后。只请求正常退出，保留保存提示，绝不强制终止进程。
-- 设置重设计为四个分类页，主题以卡片预览，支持实时预览与取消、界面缩放、减少动效、返回自动刷新、重启提示策略、可选 Cavalry 路径。
-- 安装覆盖暂存/回滚、同批重名冲突、递归目标/跨平台路径穿越保护。
-- 修正 macOS 图标视觉大小，完整 Retina ICNS；Windows 18 档内嵌 ICO、静态 VC++ 运行库与固定路径升级安装器。
-
-macOS 应用版本 **0.1.1 / build 21**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备；其运行状态须以当前推送提交对应的实际检查为准，不以本地交叉编译代替。
-
-**验证边界**：Windows 真实 Cavalry、显卡/多屏拖窗、混合 DPI、任务栏缓存的人工验收仍延期；CI 不等价于这些体验测试。安全重启自动测试使用模拟进程，不对用户未保存工程发起退出。不能承诺所有环境绝对无 bug 或零卡顿。
-
-## Downloads / 安装包
-- `CavalryKit-0.1.1-mac-arm64.dmg` — macOS Apple Silicon
-- `CavalryKit-0.1.1-win-x64.zip` — Windows x64，完整解压后运行 `Install-CavalryKit.cmd`
-- `SHA256SUMS.txt` — 安装包 SHA-256
-
-升级前退出 CavalryKit；macOS 替换原应用，Windows 使用固定路径安装器。旧便携副本不会自动删除。macOS 使用 ad-hoc 签名、未公证；Windows 没有商业代码签名证书。
+真实Windows Cavalry、GPU／多屏拖窗、混合DPI和任务栏缓存的人工体验仍未验收。CI不是这些场景的替代证据；不承诺所有环境无卡顿或无缺陷。
 
 ## English
 
-**Build20 icon material refinement**: apply an original satin-silver rim and inner-depth treatment to CavalryKit's own approved symbol, adapting independent macOS and Windows size resources; the C symbol and third-party source image are not included.
+### Upgrading from 0.1.0
 
-**Build19 icon anchor restoration**: The macOS Dock/window master is byte-identical to the first approved A-direction preview. Each macOS ICNS frame is independently sized from that master, and the macOS in-app brand uses the matching A artwork. Windows ICO frames and the Windows brand remain unchanged.
+0.1.1 updates the workspace, responsiveness, and safe installation workflow. It uses the final approved D/V6 artwork. It does not change Cavalry project formats, execute imported scripts, or migrate/delete existing user libraries.
 
-**Build16 refinement**: row-end icons and decorative dots share row-hover motion without moving click targets. Program Location uses a consistent line icon. Light secondary buttons, count badges and status surfaces follow the dark theme's geometry/hierarchy with tuned neutral materials, contrast and focus states.
+- Moves identification, extraction, copying, scanning, removal, and process checks off the UI thread. Cached filtering and virtualized lists reduce repeated work for large libraries.
+- Unifies the left-hand import workspace, separate file button, host status, and vertical shortcuts; preserves right-hand filters/search and places results/errors in bounded dialogs.
+- Adds four-language settings, regional fonts, mixed-script filenames, dark/light/custom colors, and immediate preference previews that do not persist on Cancel.
+- Provides staged, interruptible filter/list/hover feedback with stable hit targets and reduced motion. Frame-by-frame repainting stops after activity settles.
+- Uses native file selection, explicit conflict choices, staged replacement/recovery, a fixed Windows install path, old-EXE backups, and checked shortcuts.
+- Requests normal Cavalry restart after installation; save prompts, cancellation, timeout, or multiple instances never trigger a forced kill.
+- Freezes approved macOS Dock/window/in-app artwork and all 18 Windows ICO sizes so normal builds cannot redraw rejected styles.
+- Corrects Windows-native path expectations in tests and the UTF-8 BOM needed for Chinese filenames in Windows PowerShell 5.1 packaging.
+- Includes Chinese/English offline guides and a SHA-256 list for release attachments.
 
-**Build15 refinement**: inset rounded rail, optical ink alignment, equal search/list widths, repaired refresh arrow, separate reveal/remove icons and decorative-only dots. Reveal no longer applies disabled tint; a complete content face aligns mixed-script filenames (with a larger package). Foreground-only status breathing pauses in reduced motion/background. Save, reset, safety copy and Program Location share the refined styling.
+### Installation, preferences, and recovery
 
-**Earlier build14 (menu/Save-icon details superseded above)**: a three-dot action menu with removal confirmation, staggered whole-card upward reveal and expanding hover, centered search with sixteen occasional localized hints, a refresh tile, inline status badge, four green shortcuts, a clearer drop surface and soft-tinted Save. The default hint occupies 20s and a suggestion 4s; focus/input/reduced motion pauses rotation. Modal entrance/exit can be interrupted and replayed.
+Use the platform installation attachment, not GitHub's automatic Source code archive. On macOS, quit CavalryKit and replace the same-named app in Applications. On Windows, extract everything and run Install-CavalryKit.cmd. In-place updates preserve the Cavalry library and CavalryKit preferences. To restore an older program, quit the current one and restore only the backed-up program files—not newer user content or settings.
 
-Annotated revision: brand/status in the left rail, soft drop surface plus a file action below, four stacked shortcuts, segmented filters with an adjacent kind-colored badge, and refresh beside search. Script rows use green; plugins use blue. Both row actions are separate icons; the trailing dots are decorative. Drop hover has an even outline and coordinated icon/title/format feedback.
+See `INSTALL.en.txt` / `INSTALL.zh-CN.txt` inside the package. macOS is ad-hoc signed and not notarized; Windows is not commercially signed. The tool does not disable Gatekeeper, SmartScreen, or other protections.
 
+### Verification limits
 
-Earlier build14/15 native interaction revision: one full-card import target with ordinary hover feedback, whole-field search focusing, full-row switches and larger, separated action targets. Native coordinate-input traces and optional rendered-frame captures supplement tests; a synthetic GIF is not treated as runtime verification.
+The release-tag commit must pass hosted macOS/Windows formatting, Clippy, tests, platform packaging, and source audits. Windows additionally exercises in-place installation, backups, file locks, and rollback fixtures. Approved PNG→ICO/ICNS→PE/installed-app resources are checked. The local macOS main window/brand have been observed; Dock appearance is supported by a user-provided real screenshot.
 
+Physical Windows/Cavalry, GPU/multiple-monitor dragging, mixed DPI, and taskbar-cache experience remain manually unverified. CI does not replace those checks or guarantee perfect performance in every environment.
 
-Performance and usability update: background I/O, virtualized library, bounded result dialogs, right-aligned actions, Cavalry-inspired dark/light/custom colors and Chinese/English/Japanese/Korean UI.
+## Attachments / 发布附件
 
-Settings support preview/cancel, scale, reduced motion, refresh-on-focus and restart policy. After successful installation, choose a normal Cavalry restart or do it later. Save your project first; cancellation, timeouts and multiple instances never trigger forced termination or duplicate launches.
+- `CavalryKit-0.1.1-mac-arm64.dmg`
+- `CavalryKit-0.1.1-win-x64.zip`
+- `SHA256SUMS.txt`
 
-Includes staged replacement/rollback, recursive-target and cross-platform archive-path safeguards, corrected macOS optical icon margins, 18 Windows ICO sizes, static VC++ runtime and an in-place per-user Windows upgrader.
-
-The workspace retains the left-hand import area and right-hand list filters/search without duplicate headings. Unified blue-charcoal/white surfaces, compact green actions, segmented filters and quiet row cards replace heavy outlines. Finite, interruptible choreography includes eased indicator travel, decorative drop settling and staged modal/content reveal; background clicks are blocked immediately and reduced motion is instant. Settings now use four focused pages and visual theme cards. Regional SC/JP/KR fonts replace the shared Japanese UI subset. macOS bundle build: 16.
-
-Native CI runs on the published source branch; its pass/fail state is attached to each commit in GitHub Actions. Physical Windows/Cavalry, GPU/mixed-DPI and taskbar behavior are still deferred; automated checks do not substitute for those tests. Both packages are unsigned for commercial distribution (macOS is ad-hoc signed without notarization).
+Online references / 以下需要联网：
+- Release: https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.1
+- Chinese guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.md
+- English guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.en.md
+- Changes since 0.1.0: https://github.com/luoboruodai/Cavalrykit/compare/v0.1.0...v0.1.1
