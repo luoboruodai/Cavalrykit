@@ -1,10 +1,16 @@
 # CavalryKit 0.1.1
 
+## 本地 build 21 / Local build 21
+
+正式采用人类确认的 D / V6 图标：macOS 图标、窗口、应用内品牌和 Windows 多尺寸资源一致。只更新图标及构建身份，不改已确认的界面或性能逻辑。旧金属边框生成器已改为批准资源校验/组装，避免打包回退。此为本地候选交付，不代表已远程发布；Windows 原生图标/DPI仍待实机验收。
+
+Adopts the explicitly approved D / V6 artwork without redesigning the interface or changing runtime behavior. Native Windows icon/DPI checks remain pending; this local build is not a remote release.
+
 > Local release candidate / 本地待发布候选：尚未创建 v0.1.1 Release，等待界面确认与发布权限条件满足。
 
 ## 中文
 
-**build20图标材质修正**：依据用户提供的 Cavalry 图标参考，把 CavalryKit 原图形置于深灰渐变内面，加上自绘银灰包边、高光和落影；没有复制 Cavalry 的 C 标志或图标像素。Mac/Win 使用各自尺寸资源，Windows 18 档高清光学源帧与图形保持可读。本轮只调整图标材质，已确认的主界面/设置布局不变。
+**历史build20图标材质修正（已由V6取代）**：依据用户提供的 Cavalry 图标参考，把 CavalryKit 原图形置于深灰渐变内面，加上自绘银灰包边、高光和落影；没有复制 Cavalry 的 C 标志或图标像素。Mac/Win 使用各自尺寸资源，Windows 18 档高清光学源帧与图形保持可读。本轮只调整图标材质，已确认的主界面/设置布局不变。
 
 **build19视觉锚点修正**：macOS 图标恢复为用户第一轮确认的 A「石墨柔光」原始预览字节，各 ICNS 小尺寸从该图一次生成；macOS 应用内品牌图来自对应 A 稿。Windows 18 帧 ICO/应用内图标保持不变。修正的是资源视觉版本漂移，不把它归因于系统缓存。
 
@@ -36,7 +42,7 @@
 - 安装覆盖暂存/回滚、同批重名冲突、递归目标/跨平台路径穿越保护。
 - 修正 macOS 图标视觉大小，完整 Retina ICNS；Windows 18 档内嵌 ICO、静态 VC++ 运行库与固定路径升级安装器。
 
-macOS 应用版本 **0.1.1 / build 20**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备，但因远程发布权限限制未执行，不计为验证通过。
+macOS 应用版本 **0.1.1 / build 21**。macOS 实际交互与代码自动测试、双端构建/资源检查已纳入发布验证，原生 CI 工作流已准备；其运行状态须以当前推送提交对应的实际检查为准，不以本地交叉编译代替。
 
 **验证边界**：Windows 真实 Cavalry、显卡/多屏拖窗、混合 DPI、任务栏缓存的人工验收仍延期；CI 不等价于这些体验测试。安全重启自动测试使用模拟进程，不对用户未保存工程发起退出。不能承诺所有环境绝对无 bug 或零卡顿。
 

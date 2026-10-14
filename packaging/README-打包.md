@@ -58,19 +58,13 @@ Windows 默认静态链接 VC++ 运行时；原生构建使用 encoded flags，�
 
 ## 平台图标规范与生成
 
-- 原始上传图案：`assets/icon-source.ico`，保留不覆盖；禁止用已缩小或带留边的输出再次充当输入。
-- `cargo run --locked --example import_icon` 进行可重复生成，不使用 AI 重绘。
-- macOS：`assets/icon-macos.png` 为 1024×1024 母图；有效不透明底板为 824×824（约 80.5%），这来自本机系统图标的视觉比例对照，**不是 Apple 强制规定的数值**。原图含抗锯齿边缘，因此完整图案缩放尺寸为 830px。另保留透明外边距与轻微投影。
-- ICNS 按 Apple 的 16、32、128、256、512 pt 各配 1×/2×，共 10 个槽位（像素覆盖 16～1024）。包内资源文件为 `CavalryKitIcon.icns`。
-- Windows：`assets/icon.ico` 是 32-bit RGBA 多尺寸容器，包含 16、20、24、30、32、36、40、48、60、64、72、80、96、128、256 px；覆盖 Microsoft 建议的最少 16/24/32/48/256 以及常用缩放档位。
-- 每个 Windows 尺寸都直接从原图采样，不从小图再次放大。`assets/icon.png` 保留 256px 的应用内品牌版本，macOS 原生窗口另用带留边的 256px PNG。
-- 原图只有 256px；生成高分辨率容器不会凭空增加原始图案细节。
-- 核对实际解包的 ICNS/EXE 资源，而非只检查文件扩展名。原图、重建、边距、ICO 每一帧均有自动回归测试。
-
-官方参考：
-- Apple High Resolution Guidelines / Provide High-Resolution Versions of All App Graphics Resources: https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Optimizing/Optimizing.html
-- Microsoft App icon construction: https://learn.microsoft.com/en-us/windows/apps/design/style/iconography/app-icon-construction
-
+- 原始上传图案 `assets/icon-source.ico` 保持不变；当前批准设计为 `icon-final-inset-v6`，不得重画已退回的金属边框或后续候选。
+- `python3 scripts/render_platform_icons.py --check` 先校验冻结的逐尺寸SHA，再检查组装结果；此脚本保留历史名称，但不会重新渲染图案。
+- `cargo run --locked --example import_icon` 仅将批准PNG帧组装成ICO/ICNS和应用运行时图像，不重采样。
+- macOS：1024画布中不透明板面824px为本项目光学约定，不是Apple强制值；11个ICNS块覆盖16–1024px表示。资源文件名含当前内容hash，用于区分旧图标资源，不重置全局图标缓存。
+- Windows：18帧ICO分别为16/20/24/30/32/36/40/48/60/64/72/80/96/128/144/160/192/256px；每帧保留批准的小尺寸光学校正。
+- `app`和`macos-brand`使用批准的无Dock留白图形，运行时读取精确256px帧。原始符号仍是256px位图，放大不增加真正矢量细节。
+- 生产PNG、ICO、ICNS和PE内嵌帧须与批准清单匹配；浏览器DPR与容器检查不替代原生Dock/任务栏/Explorer/DPI验证。
 
 ## 本版验证入口
 

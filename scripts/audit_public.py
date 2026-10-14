@@ -6,7 +6,7 @@ import argparse
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT_FILES = {'.github/workflows/desktop.yml', '.cargo/config.toml', '.gitignore', '.gitattributes', 'Cargo.toml', 'Cargo.lock', 'build.rs',
               'README.md', 'PRODUCT.md', 'CHANGELOG.md', 'RELEASE_NOTES.md'}
@@ -22,7 +22,9 @@ RULES = {
 
 
 def allowed(path):
-    p = Path(path)
+    # Git uses slash paths; filesystem enumeration uses backslashes on Windows.
+    # Normalize before matching nested root-level allowlist entries.
+    p = PurePosixPath(str(path).replace("\\", "/"))
     return (str(p) in ROOT_FILES or (len(p.parts) > 1 and p.parts[0] in DIRECTORIES)) and not any(
         part in {'__pycache__', '.DS_Store', '.env', 'private', 'backups', 'PROJECT.md'} or part.endswith('.log')
         for part in p.parts)
@@ -41,6 +43,9 @@ def self_test():
     assert all(violations(data) for data in fixtures), 'scanner accepted a synthetic secret'
     assert not violations(b'/Users/test/Library/Example /build/home/.cargo/registry/src/'), 'false positive on fixture'
     assert not allowed('PROJECT.md') and not allowed('private/notes.txt')
+    assert allowed('.github/workflows/desktop.yml') and allowed(r'.github\workflows\desktop.yml')
+    assert allowed('.cargo/config.toml') and allowed(r'.cargo\config.toml')
+    assert not allowed(r'private\notes.txt') and not allowed(r'assets\private\notes.txt')
     print('PASS synthetic rejection self-tests')
 
 

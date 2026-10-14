@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.1 — 2026-10-13
+## 0.1.1 — 2026-10-14
+
+### build 21 / 正式采用已确认的 V6 图标
+- Apply the explicitly approved D / V6 icon pixels to macOS Dock/window, both in-app brands, and all 18 Windows ICO frames; do not apply later rejected variants.
+- Freeze per-frame and assembled-resource hashes. Replace the retired metallic renderer with validation/assembly so normal builds cannot silently redraw the old border.
+- Keep UI layout, preferences, application behavior and user libraries unchanged. Windows native taskbar/Explorer/mixed-DPI appearance remains unverified on this macOS build host.
 
 ### build 20 / Cavalry 材质语言的边框调整
 - Add an independently generated satin-silver perimeter, rounded relief and inner depth to CavalryKit's own approved file/check/plugin artwork, guided by the supplied Cavalry icon screenshot without copying the C symbol.

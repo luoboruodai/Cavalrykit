@@ -41,7 +41,7 @@ macOS 是 **ad-hoc 签名、未公证**，Windows **没有商业代码签名证�
 - **深浅一致性**：明亮的取消按钮/状态徽章采用柔和中性表面，计数徽章保持类型色但有明确灰度；程序位置导航与标题统一为线性图标。
 - **一致的界面**：右对齐弹窗操作、4/8/16/24pt 基础间距、左侧品牌与状态、明确的取消入口、可见滚动条和键盘焦点。
 - **安全安装**：同名内容先询问；覆盖前暂存，失败保留/恢复旧内容；同批重名、重复保留两者和重新导入自身均有回归测试。
-- **双端图标**：基于已确认的 A 图形，加入参考 Cavalry 的银灰包边/高光/深色内面（不复制 C 字标）；macOS Dock/应用内与 Windows 18 档高清图标分别适配。
+- **双端图标**：采用最终确认的 D / V6 墨黑图标及窄边高光；macOS Dock、窗口、应用内品牌与 Windows 18 档逐尺寸资源均按批准字节组装，不再重画已退回的银灰包边。
 
 ## 使用教程
 
@@ -107,7 +107,7 @@ cargo run --locked --features ui-preview --example ui_preview -- private/preview
 ```
 
 默认测试只用合成数据与临时目录。真实 Cavalry 目录测试 `real_env_roundtrip` 默认忽略，不要无差别运行 ignored 测试。
-图标原始参考为 `assets/icon-source.ico`，已批准的图形源与逐尺寸资源位于 `assets/`、`assets/icon-frames/`；金属包边由 `scripts/render_platform_icons.py` 在设计时确定性生成，Windows 可缩放几何位于 `assets/icon-glyph.svg`；UI 预览功能不进入正常构建。打包见 [打包说明](packaging/README-打包.md)，变更见 [CHANGELOG](CHANGELOG.md)。真实截图、日志、用户工程和本地交接记录不上传。
+图标原始参考为 `assets/icon-source.ico`；当前采用人类确认的 D / V6 位图资源，逐尺寸 PNG 与校验清单位于 `assets/icon-frames/`、`assets/icon-design.json`。`scripts/render_platform_icons.py` 只校验并组装批准资源，不重画已退回的金属包边或旧矢量方案；UI 预览功能不进入正常构建。打包见 [打包说明](packaging/README-打包.md)，变更见 [CHANGELOG](CHANGELOG.md)。真实截图、日志、用户工程和本地交接记录不上传。
 
 ---
 
