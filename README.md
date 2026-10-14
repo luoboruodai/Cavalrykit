@@ -90,7 +90,7 @@ Windows 静态链接 VC++ 运行库。实际流畅度仍受驱动、显示设置
 ## 验证范围
 
 - 自动测试覆盖引擎、失败回滚、背景任务、偏好保存、多语言字形、布局、对比度、图标及安全重启状态机。
-- 原生 macOS / Windows CI 定义在 `.github/workflows/desktop.yml`；工作流尚未推送执行，不能记为通过。Windows CI 计划执行安装、原位更新、快捷方式图标、备份和文件锁失败路径测试。
+- 原生 macOS / Windows CI 定义在 `.github/workflows/desktop.yml`，在分支推送时运行格式、Clippy、测试、打包及公开源码检查；Windows 另执行安装器原位更新、快捷方式、备份和文件锁失败路径测试。通过与否以对应提交的 GitHub Actions 结果为准。
 - macOS 本机检查实际导入、结果、稍后重启、设置与多语言交互。
 - **Windows 真实 Cavalry、GPU/多屏拖窗、混合 DPI 和任务栏缓存体验验收仍延期**；CI 和交叉编译不能替代它。自动安全重启测试使用模拟进程，不对用户未保存的工程执行重启。
 - UI 采用尼尔森启发式复查，不是第三方认证或用户研究。见 [UI 复查记录](packaging/UI_REVIEW.md) 和 [验证清单](packaging/VALIDATION.md)。
@@ -129,7 +129,7 @@ Settings include language, color scheme, custom accent/background, 90–125% sca
 
 The library uses cached filtering and virtualized rows. I/O runs in a serialized background worker. Windows uses native process enumeration, embedded multi-size icons and static VC++ runtime linking. `CAVALRYKIT_RENDERER=glow` selects an alternative rendering backend for older drivers.
 
-**Release status:** 0.1.1 is a local release candidate; its GitHub Release has not been created. The native macOS/Windows CI workflow is prepared but has not run remotely.
+**Release status:** The 0.1.1 source branch is available; a GitHub Release has not been created. Native macOS/Windows checks run on branch pushes. Check the GitHub Actions result for the exact commit, rather than treating a successful push as a passing test result.
 
 **Verification boundary:** Physical Windows/Cavalry, GPU/mixed-DPI and taskbar interaction checks are deferred; automated CI and cross-compilation are not equivalent to those tests. Restart state-machine tests use simulated processes and never close a user's unsaved project. macOS uses ad-hoc signing without notarization; Windows is not commercially code-signed.
 

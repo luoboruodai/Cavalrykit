@@ -29,7 +29,7 @@ macOS / Windows 桌面;与 Cavalry 并存;用户常从聊天/网盘拿到 .jsc/.
 - 卸载移入废纸篓(可还原),目录直达(访达)
 - 现有 egui 实现,逻辑/功能/后台任务/布局回归测试,release 签名打包(packaging/build-mac.sh)
 - 分发:macOS .dmg(Apple Silicon)/ Windows .zip(cargo-xwin 交叉编译,GUI 子系统)
-- 显式未决：Windows 实机拖窗、混合 DPI、任务栏和安装器验收已延期；交叉编译不能替代。本轮界面重设计完成后先展示供用户确认，再推进发布；原生 CI 尚未远程执行。
+- 显式未决：Windows 实机拖窗、混合 DPI、任务栏和安装器验收已延期；交叉编译不能替代。界面及图标已按人类确认流程定稿；原生 CI 已随源码分支推送启用，结果按具体提交核对，不代替实际用户硬件体验。
 
 ## Brand Commitments
 

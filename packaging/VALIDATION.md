@@ -8,13 +8,17 @@
 - Windows仅交叉构建、测试程序生成与静态资源/依赖/ZIP验证；原生Windows运行和DPI检查继续保留未验证。
 - 公共合成预览使用虚构数据，不替代原生使用证据，也不包含用户真实库。
 
-## build21 已执行结果
+## build21 本机已执行结果
 
 - macOS全目标/全特性测试117通过、1ignored；严格Clippy/fmt/diff通过。
 - 批准V6的37规范帧、所有运行时PNG、ICO18帧、ICNS11块及最终PE/DMG内资源相符；安装payload与签名包相同。
 - 正式安装路径已启动并观察主窗口和应用内图标；Dock读取接口曾超时，后续已通过用户提供的真实Dock截图核对V6外观，安装身份另行校验通过。设置交互因用户切换未继续，不修改用户偏好。
-- Windows release及全目标/全特性测试EXE编译通过；EXE未执行。静态GUI/x64/18帧/PerMonitorV2/无外部VC运行时与ZIP五成员验证通过。
+- 本机交叉构建的Windows release及全目标/全特性测试EXE编译通过；未在这台macOS上执行EXE。静态GUI/x64/18帧/PerMonitorV2/无外部VC运行时与ZIP五成员验证通过。
 - 47张真实组件合成预览已生成，公共三图更新为V6；仅虚构数据，不是用户库截图。
+
+## 分支 CI
+
+`.github/workflows/desktop.yml` 在 macOS / Windows 托管运行器执行测试、平台打包和源码检查，Windows另执行安装器/回滚夹具。以具体提交的运行结论为准；首次Windows执行发现测试预期硬编码POSIX分隔符，已改成按本机路径构造预期，不改变安装逻辑。CI结果不代替真实Cavalry、图形交互、Dock/任务栏或混合DPI观察。
 
 ## 历史执行摘要（build 20，已被build21图标取代）
 

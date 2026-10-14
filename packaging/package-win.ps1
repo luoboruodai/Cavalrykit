@@ -1,3 +1,4 @@
+﻿# Keep the UTF-8 BOM: Windows PowerShell 5.1 must read the Chinese guide filename correctly.
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 $version = ((Get-Content Cargo.toml | Select-String '^version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value)
