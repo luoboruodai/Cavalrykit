@@ -335,7 +335,14 @@ fn mixed_zip_installs_both() {
 
     let out = installer::execute(plan.units, vec![]);
     assert_eq!(out.installed_plugins, vec!["MyPlugin"]);
-    assert_eq!(out.installed_scripts, vec!["tools/useful.jsc"]);
+    // Outcome names use native filesystem separators, not ZIP entry separators.
+    assert_eq!(
+        out.installed_scripts,
+        vec![Path::new("tools")
+            .join("useful.jsc")
+            .to_string_lossy()
+            .into_owned()]
+    );
     // 插件目录内部的 .js 是插件资源,不得出现在脚本目录
     assert!(paths.plugins.join("MyPlugin/helper.js").is_file());
     assert!(!paths.scripts.join("MyPlugin/helper.js").exists());
