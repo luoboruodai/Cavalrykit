@@ -1,5 +1,6 @@
 """Release ZIP regressions use synthetic EXEs and an isolated copy of public guides."""
 import importlib.util
+import io
 from pathlib import Path
 import shutil
 import tempfile
@@ -41,6 +42,18 @@ class ReleasePackageTests(unittest.TestCase):
             self.assertEqual(archive.read('CavalryKit.exe'), self.exe.read_bytes())
             for guide in package_win.GUIDES:
                 self.assertIn('CavalryKit 0.1.1', archive.read(guide).decode('utf-8'))
+
+    def test_non_utf8_default_locale_reads_utf8_sources(self):
+        real_open = io.open
+
+        def legacy_open(file, mode='r', buffering=-1, encoding=None, *args, **kwargs):
+            if 'b' not in mode and encoding is None:
+                encoding = 'cp1252'
+            return real_open(file, mode, buffering, encoding, *args, **kwargs)
+
+        with patch('io.open', side_effect=legacy_open):
+            result = package_win.package(self.exe, self.root)
+        self.assertEqual(len(result['members']), 8)
 
     def test_stale_guide_preserves_previous_package(self):
         guide = self.root / 'packaging/INSTALL.en.txt'

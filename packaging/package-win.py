@@ -47,7 +47,7 @@ def validate_archive(path, expected):
 
 
 def package(executable, root=ROOT):
-    version = re.search(r'^version = "([^"]+)"', (root / 'Cargo.toml').read_text(), re.M).group(1)
+    version = re.search(r'^version = "([^"]+)"', (root / 'Cargo.toml').read_text(encoding='utf-8'), re.M).group(1)
     verify(executable, root / 'assets/icon.ico')
     members = release_members(root, executable, version)
     dest = root / 'dist' / f'CavalryKit-{version}-win-x64.zip'
