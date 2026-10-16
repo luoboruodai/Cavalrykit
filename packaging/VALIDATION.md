@@ -1,6 +1,81 @@
-# 0.1.1 验收清单
+# 0.1.2 验收清单
 
-## 当前本地 build 21 图标验收范围（2026-10-14）
+## 当前本地 build 32 验收范围（2026-10-16）
+
+- R1–R35：扇形图标、固定提示、间距层级、清除按钮和固定命中区保持既有行为。
+- R37：空结果面板由 `p.border` 改用侧栏同款 `p.line` 分隔灰度；rest 为 2% 状态色和 0.5pt，hover 仅 18% 和 0.75pt。
+- 先完成自动测试、实际组件预览、打包身份与签名，再检查正式安装版的真实 hover、清除恢复和偏好／库保全；Windows 实机仍未验证。
+
+当前自动结果：124 项测试通过、1 项 ignored，严格 Clippy/fmt/diff 与 8 项打包回归通过；60 张静态预览已复核，针对性测试覆盖新描边颜色、旋转边界、rest 正间隙和固定命中区。
+
+## build32 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build32**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 真实窗口中面板外框为与左侧边栏一致的低对比分隔灰度，扇形图标和间距不变；面板 hover 保持克制，清除搜索恢复 53 项。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build31 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build31**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 真实窗口中左右卡片呈相反小角度和高低差，图标共同旋转，中央搜索卡片水平；内部更分散，面板为中性弱描边。面板 hover 保持有效，清除搜索恢复 53 项。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build30 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build30**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 真实窗口中静止卡片间距、固定提示和 32/16/24pt 层级清楚；面板 hover 与按钮直接 hover 均有内部反馈，Close 图标明确且无左色条。按住后移出未误清除，最终清除搜索恢复 53 项。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build29 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build29**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 真实指针进入空结果面板后，后层卡片展开、主卡片与图标上浮放大、圆点外移；静止时恢复前层主卡片与收拢后层，文字和清除目标不动。清除搜索恢复 53 项列表。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build28 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build28**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 大面板在实际窗口中留白充足，中央 88pt 图标和两个 60pt 辅助图标层级清楚；`wfwadafaf` 已融入“未找到与 query 匹配的脚本或插件”的完整说明，清除后恢复 53 项列表。
+- 未悬停绿条为内高 52%–76%，只适度增强可见性，未恢复过高样式或改变命中区。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build27 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build27**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 实际输入 `wdadawd` 后，搜索词单独一行显示，中心搜索图标与四个文件符号层级清楚；hover 有放大反馈，清除后恢复 53 项列表，未出现“新建文档”等无关动作。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build26 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build26**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 快捷入口的真实 hover 帧显示整张卡片放大，绿条保持在内高 42%–68%，没有越过命中区；空结果卡片 hover 有放大反馈，清除后恢复 54 项列表。
+- 明亮主题预览后通过“取消”恢复深灰，未保存偏好；重复导入现有脚本显示 `成功 0 · 跳过 0 · 相同 1 · 失败 0`，没有生成副本或覆盖原文件。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build25 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build25**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 快捷入口整张卡片及图标、文字统一缩放，hover 时有亮边和轻微放大，移开恢复且未出现父层裁切；空结果卡片静止描边保持克制，辅助文字未越界，清除后恢复 54 项列表。
+- 深灰→明亮→取消恢复最终正确，未保存偏好；重复导入现有脚本显示 `成功 0 · 跳过 0 · 相同 1 · 失败 0`，没有生成副本或覆盖原文件。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## build24 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build24**，codesign、版本和 payload 一致；临时旧副本和构建用额外 `.app` 已清理，仅保留正式入口。
+- 空结果卡片在正式窗口居中且辅助文字未越界，hover 底色／边框与轻微放大正常，清除后恢复列表；快捷入口绿条加长且 hover 有亮边和轻微放大，移开恢复，命中目标未改变。
+- 深灰→明亮→取消恢复最终正确，未保存偏好；重复导入现有脚本显示 `成功 0 · 跳过 0 · 相同 1 · 失败 0`，未生成副本或覆盖。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## 历史：build23 本机已执行结果（2026-10-16）
+
+- 最终 DMG 已原位安装为 `/Applications/CavalryKit.app` **0.1.2 / build23**，codesign、版本和 payload 一致；仅有此正式运行入口。
+- 现有脚本重复导入显示 `成功 0 · 跳过 0 · 相同 1 · 失败 0`，未生成副本或覆盖。空结果卡片为 360pt 宽、24pt 内边距、48pt 图标和 16/8pt 间距，清除后恢复列表；快捷图标不再叠加绿色底板，hover 与边框／绿条反馈正常。
+- 深灰→明亮→取消恢复最终正确，未保存偏好；smoothstep 中途改向、精确终态与停止重绘由 motion 自动回归和 240 帧合成序列覆盖，不把离散截图当 GPU 计时证明。
+- 偏好字节不变；Scripts/Plugins 原内容无增删改，`.DS_Store` 元数据未变化；Cavalry 宿主进程不变。Windows release 和全部测试 EXE 交叉生成，静态 GUI/x64/18 帧/PerMonitorV2/无外部 VC runtime 与 ZIP 八成员验证通过，未执行 Windows EXE。
+
+## 历史：0.1.1 验收清单
+
+### 当前本地 build 21 图标验收范围（2026-10-14）
 
 - 只应用人类确认的D / V6图标，使用冻结源帧；旧build20金属边框为历史，不再是当前预期。
 - 必须检查批准清单→规范PNG→ICO/ICNS→最终PE/安装.app的对应关系，且普通打包不得重新渲染旧样式。
@@ -8,7 +83,7 @@
 - Windows仅交叉构建、测试程序生成与静态资源/依赖/ZIP验证；原生Windows运行和DPI检查继续保留未验证。
 - 公共合成预览使用虚构数据，不替代原生使用证据，也不包含用户真实库。
 
-## build21 本机已执行结果
+### build21 本机已执行结果
 
 - macOS全目标/全特性测试117通过、1ignored；严格Clippy/fmt/diff通过。
 - 批准V6的37规范帧、所有运行时PNG、ICO18帧、ICNS11块及最终PE/DMG内资源相符；安装payload与签名包相同。

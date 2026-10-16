@@ -87,6 +87,7 @@ impl Worker {
                             Job::Install(mut plan, resolved) => {
                                 let mut outcome =
                                     installer::execute(std::mem::take(&mut plan.units), resolved);
+                                outcome.duplicates.append(&mut plan.duplicates);
                                 outcome.failures.append(&mut plan.failures);
                                 drop(plan);
                                 Event::Installed(outcome, library::scan(&paths))

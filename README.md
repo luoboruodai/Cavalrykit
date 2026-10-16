@@ -1,8 +1,10 @@
-# CavalryKit 0.1.1
+# CavalryKit 0.1.2
 
 [English](README.en.md) · 简体中文
 
 本地 Cavalry 脚本／插件安装与管理工具，支持 **macOS Apple Silicon、Windows x64**，界面支持简体中文、English、日本語、한국어。不会上传导入内容，也不会执行导入的脚本。
+
+<img src="assets/sponsor-wechat.svg" alt="微信赞助" width="232" height="64">
 
 ![主界面，合成示例数据](assets/screenshots/main.png)
 
@@ -12,34 +14,33 @@
 
 </details>
 
-## 下载与从 0.1.0 升级
+## 下载与从 0.1.1 升级
 
-从 [v0.1.1 Release](https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.1) 下载对应平台的**安装附件**，不要把 GitHub 自动生成的 Source code 包当作安装包。
+从 [v0.1.2 Release](https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.2) 下载对应平台的**安装附件**，不要把 GitHub 自动生成的 Source code 包当作安装包。
 
 | 平台 | 附件 | 安装／升级 |
 |---|---|---|
-| macOS Apple Silicon | `CavalryKit-0.1.1-mac-arm64.dmg` | 退出 CavalryKit，将 `CavalryKit.app` 拖到「应用程序」，替换同名应用，再推出镜像 |
-| Windows x64 | `CavalryKit-0.1.1-win-x64.zip` | 完整解压，关闭 CavalryKit，运行 `Install-CavalryKit.cmd` |
+| macOS Apple Silicon | `CavalryKit-0.1.2-mac-arm64.dmg` | 退出 CavalryKit，将 `CavalryKit.app` 拖到「应用程序」，替换同名应用，再推出镜像 |
+| Windows x64 | `CavalryKit-0.1.2-win-x64.zip` | 完整解压，关闭 CavalryKit，运行 `Install-CavalryKit.cmd` |
 | 完整性校验 | `SHA256SUMS.txt` | 核对下载文件的 SHA-256；不要仅依赖文件名 |
 
 两个安装包均附 **`INSTALL.zh-CN.txt`、`INSTALL.en.txt` 和双语 `RELEASE_NOTES.md`**，离线即可查看安装、升级与恢复步骤。
 
 - **保留数据**：原位升级不迁移或删除 Cavalry 的 Scripts／Plugins，也不重置 CavalryKit 偏好。升级前仍建议备份自己的库与设置。
-- **macOS**：统一入口 `/Applications/CavalryKit.app`。不要保留改名的运行副本，以免启动旧版。0.1.1 的内部构建号为 **21**。
+- **macOS**：统一入口 `/Applications/CavalryKit.app`。不要保留改名的运行副本，以免启动旧版。0.1.2 的内部构建号为 **32**。
 - **Windows**：固定入口 `%LOCALAPPDATA%\Programs\CavalryKit\CavalryKit.exe`。桌面／开始菜单快捷方式指向该路径；更新会备份旧 EXE 至 `%LOCALAPPDATA%\CavalryKit\Backups`。其他位置的便携副本不会被擅自删除。旧任务栏图标可取消固定后从新快捷方式重新固定。
 - **签名说明**：macOS 使用 ad-hoc 签名，未公证；Windows 没有商业代码签名。系统可能提示无法验证开发者，程序不会关闭系统保护。
 
-校验示例：macOS 在下载目录执行 `shasum -a 256 CavalryKit-0.1.1-mac-arm64.dmg`，与清单对应行比较；Windows 执行 `Get-FileHash .\CavalryKit-0.1.1-win-x64.zip -Algorithm SHA256`，与校验文件的对应行比较。
+校验示例：macOS 在下载目录执行 `shasum -a 256 CavalryKit-0.1.2-mac-arm64.dmg`，与清单对应行比较；Windows 执行 `Get-FileHash .\CavalryKit-0.1.2-win-x64.zip -Algorithm SHA256`，与校验文件的对应行比较。
 
-## 0.1.0 → 0.1.1 的主要变化
+## 0.1.1 → 0.1.2 的主要变化
 
-- **减轻界面阻塞**：识别、解压、复制、扫描、卸载与进程检查放入后台串行任务；文件选择异步打开。缓存过滤结果并虚拟化列表，独立结果弹窗使用分页，不再撑开导入区域。
-- **双端适配**：Windows 使用原生进程枚举和系统标题栏；默认 wgpu 渲染，提供 Glow 兼容入口。测试与安装器兼顾原位更新、文件锁、失败恢复和平台路径差异。
-- **重做工作区**：左侧保留品牌／宿主状态、导入卡片、独立「选择文件」和纵向快捷入口；右侧是全部／脚本／插件筛选、搜索和列表。脚本绿色、插件蓝色；弱灰三点仅是装饰，不是假菜单。
-- **可操作的细节**：搜索留白可点击，开关整行响应，显示／卸载命中区域分开；动效不带着操作目标移动。分段、列表和悬停反馈可中断，减少动效可即时回退，空闲不持续重绘。
-- **多语言与设置**：区域字体与完整内容字体兼顾四语界面、CJK／Latin 混排文件名；设置分为通用、界面配色、安装行为、程序位置。更改先预览，保存才持久化，取消恢复。
-- **安全重启提示**：安装完成后可选择稍后处理或请求正常退出／重开 Cavalry；保存提示、超时、多实例和取消都不会触发强杀。
-- **最终 V6 图标**：采用已确认的 D／V6 墨黑图标，macOS Dock／窗口／应用内品牌及 Windows 18 档资源按批准字节组装，避免构建时回到已退回的样式。
+- **重复导入更安静**：同名脚本／插件仅在内容完全相同时自动标记「相同」并跳过，不再产生「名称 2」；不同内容仍保留覆盖／保留两者／跳过。
+- **空搜索状态更开阔自然**：约 680×400pt 大面板中，主搜索卡片与两侧 Script／Plugin 卡片在静止时已有间隙，左右卡片带相反小角度和高低差，图标随卡片旋转；面板外框改用与左侧边栏一致的分隔灰度。插画、标题、固定提示和按钮按 32/16/24pt 分层，提示不复述查询；「× 清除搜索」无左侧色条，命中区域不动。
+- **侧栏反馈更完整**：四个快捷入口恢复 40pt 间距，整张卡片及图标、文字统一缩放，左侧绿条在内高 52%–76% 间生长提亮，所有中间帧均不裁切父层；图标不再叠加绿色底板，所有点击目标保持原位。
+- **稳定列表渲染减负**：快捷卡片直接计算有界几何，列表仅在入场阶段应用视觉变换，稳定列表不再为每行重复设置恒等变换；这不代替具体 GPU／系统卡顿排查。
+- **全局配色平滑切换**：设置中的主题变化与取消恢复采用 smoothstep 缓入缓出，约 0.3 秒完成；减少动效时立即切换，稳定后停止重绘。
+- **字体资源同步**：六种区域／字重 UI 子集补齐新增状态文案。
 
 ## 使用方法
 

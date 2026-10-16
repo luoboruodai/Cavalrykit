@@ -10,6 +10,12 @@ from pathlib import Path
 def verify(executable, icon):
     data = Path(executable).read_bytes()
     ico = Path(icon).read_bytes()
+    cargo = Path(__file__).resolve().parent.parent / 'Cargo.toml'
+    expected_version = next(
+        line.split('"')[1]
+        for line in cargo.read_text(encoding='utf-8').splitlines()
+        if line.startswith('version = "')
+    )
     u16 = lambda offset: struct.unpack_from('<H', data, offset)[0]
     u32 = lambda offset: struct.unpack_from('<I', data, offset)[0]
     assert data[:2] == b'MZ', 'not a PE executable'
@@ -68,12 +74,12 @@ def verify(executable, icon):
         assert embedded == ico[offset:offset + size], f'icon frame {n} differs'
         sizes.append(ico[entry] or 256)
     version = next(v for k, v in leaves.items() if k[0] == 16)
-    assert '0.1.1'.encode('utf-16le') in version
+    assert expected_version.encode('utf-16le') in version
     manifest = next(v for k, v in leaves.items() if k[0] == 24)
     assert b'PerMonitorV2' in manifest and b'asInvoker' in manifest
     assert b'/Users/' not in data and b'\\Users\\user\\' not in data, 'local build path leaked'
     return {'pass': True, 'architecture': 'x64', 'subsystem': 'GUI', 'iconFrames': sizes,
-            'version': '0.1.1', 'imports': imports, 'externalVCRuntime': False, 'dpi': 'PerMonitorV2', 'runtimeTested': False,
+            'version': expected_version, 'imports': imports, 'externalVCRuntime': False, 'dpi': 'PerMonitorV2', 'runtimeTested': False,
             'sha256': hashlib.sha256(data).hexdigest()}
 
 

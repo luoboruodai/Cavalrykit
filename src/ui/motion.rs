@@ -143,6 +143,79 @@ pub fn modal_progress(ctx: &Context, id: Id, closing: bool, seconds: f32) -> f32
 pub fn cubic_out(t: f32) -> f32 {
     1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
 }
+pub fn smoothstep(t: f32) -> f32 {
+    0.5 - 0.5 * (std::f32::consts::PI * t.clamp(0.0, 1.0)).cos()
+}
+#[derive(Clone, Copy)]
+struct ThemeTravel {
+    from: super::theme::Palette,
+    to: super::theme::Palette,
+    started: f64,
+}
+/// Global palette transition for theme switching. Retargets mid-flight when the user
+/// reverses the choice, snaps instantly under reduced motion, and requests frames
+/// only while actually blending. Returns the palette to paint this frame plus whether
+/// the egui widget style should follow it on this blend or final-snap frame.
+pub fn themed_palette(
+    ctx: &Context,
+    target: super::theme::Palette,
+    seconds: f32,
+) -> (super::theme::Palette, bool) {
+    let now = ctx.input(|i| i.time);
+    let immediate = ctx.style().animation_time == 0.0;
+    let id = Id::new("app-theme-travel");
+    let mut animating = false;
+    let mut settled = false;
+    let value = ctx.data_mut(|data| {
+        let mut state = data.get_temp::<ThemeTravel>(id).unwrap_or(ThemeTravel {
+            from: target,
+            to: target,
+            started: now,
+        });
+        if immediate {
+            state = ThemeTravel {
+                from: target,
+                to: target,
+                started: now,
+            };
+        } else if state.to != target {
+            let k = ((now - state.started) as f32 / seconds.max(0.001)).clamp(0.0, 1.0);
+            state = ThemeTravel {
+                from: super::theme::lerp_palette(state.from, state.to, smoothstep(k)),
+                to: target,
+                started: now,
+            };
+        }
+        data.insert_temp(id, state);
+        let k = ((now - state.started) as f32 / seconds.max(0.001)).clamp(0.0, 1.0);
+        animating = state.from != state.to && k < 1.0;
+        if state.from != state.to && k >= 1.0 {
+            // Snap the state once settled so the caller can re-apply the exact target
+            // style a single time (stock widgets otherwise keep the last blended style).
+            state = ThemeTravel {
+                from: state.to,
+                to: state.to,
+                started: state.started,
+            };
+            data.insert_temp(id, state);
+            settled = true;
+        }
+        super::theme::lerp_palette(state.from, state.to, smoothstep(k))
+    });
+    if animating {
+        ctx.request_repaint();
+    }
+    super::diagnostics::sample(
+        ctx,
+        "theme-travel",
+        id,
+        1.0,
+        if animating { 0.5 } else { 1.0 },
+    );
+    // The second flag tells the caller to re-apply the egui widget style with this
+    // palette: every blending frame plus the single final snap frame.
+    (value, animating || settled)
+}
 pub fn phase(t: f32, start: f32, end: f32) -> f32 {
     cubic_out(((t - start) / (end - start)).clamp(0.0, 1.0))
 }
@@ -320,6 +393,67 @@ mod tests {
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             assert_eq!(travel(ctx, id, 100.0, 0.3), 100.0)
         });
+    }
+    #[test]
+    fn theme_travel_blends_retargets_without_a_jump_and_settles() {
+        use crate::settings::{Settings, Theme};
+        let dark = crate::ui::theme::palette(&Settings {
+            theme: Theme::Cavalry,
+            ..Default::default()
+        });
+        let light = crate::ui::theme::palette(&Settings {
+            theme: Theme::Light,
+            ..Default::default()
+        });
+        let ctx = Context::default();
+        let mut seen: Vec<(crate::ui::theme::Palette, bool)> = Vec::new();
+        let mut delays = Vec::new();
+        for (t, target) in [
+            (0.0, dark),
+            (0.1, light),
+            (0.2, light),
+            (0.25, dark),
+            (0.6, dark),
+            (1.0, dark),
+        ] {
+            let out = ctx.run(
+                egui::RawInput {
+                    time: Some(t),
+                    ..Default::default()
+                },
+                |ctx| seen.push(themed_palette(ctx, target, 0.3)),
+            );
+            delays.push(out.viewport_output[&egui::ViewportId::ROOT].repaint_delay);
+        }
+        assert_eq!(seen[0], (dark, false));
+        // The retarget frame itself still shows the old color; the next frame blends.
+        assert!(seen[1].1);
+        let blending = seen[2].0;
+        assert!(blending != dark && blending != light);
+        assert!(seen[2].1);
+        // Reversing at 0.25 continues from the color that was on screen at 0.25.
+        let displayed_at_retarget = crate::ui::theme::lerp_palette(dark, light, smoothstep(0.5));
+        assert_eq!(seen[3].0, displayed_at_retarget);
+        // The settle frame reports the exact target once so the caller can re-apply it.
+        assert_eq!(seen[4], (dark, true));
+        // After that the state is fully settled: no style follow, no repaint request.
+        assert_eq!(seen[5], (dark, false));
+        assert_eq!(delays[5], std::time::Duration::MAX);
+        ctx.style_mut(|s| s.animation_time = 0.0);
+        let mut reduced = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            reduced.push(themed_palette(ctx, light, 0.3))
+        });
+        assert_eq!(reduced[0].0, light);
+        assert!(!reduced[0].1);
+    }
+    #[test]
+    fn smoothstep_eases_in_and_out_without_changing_terminal_values() {
+        assert_eq!(smoothstep(0.0), 0.0);
+        assert_eq!(smoothstep(1.0), 1.0);
+        assert_eq!(smoothstep(0.5), 0.5);
+        assert!((smoothstep(0.25) - 0.146_446_6).abs() < 0.000_001);
+        assert!((smoothstep(0.75) - 0.853_553_4).abs() < 0.000_001);
     }
     #[test]
     fn phased_reveal_and_decorative_settle_have_exact_terminal_states() {

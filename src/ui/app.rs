@@ -65,6 +65,20 @@ pub(crate) struct Audit {
     pub import_icon: Option<egui::Rect>,
     pub library: Option<egui::Rect>,
     pub card: Option<egui::Rect>,
+    pub empty_card: Option<egui::Rect>,
+    pub empty_card_hit: Option<egui::Rect>,
+    pub empty_clear: Option<egui::Rect>,
+    pub empty_clear_visual: Option<egui::Rect>,
+    pub empty_clear_icon: Option<egui::Rect>,
+    pub empty_cluster: Option<egui::Rect>,
+    pub empty_title_slot: Option<egui::Rect>,
+    pub empty_title_visual: Option<egui::Rect>,
+    pub empty_hint_slot: Option<egui::Rect>,
+    pub empty_hint_visual: Option<egui::Rect>,
+    pub empty_hint: Option<String>,
+    pub empty_decorations: Vec<egui::Rect>,
+    pub empty_dots: Vec<egui::Rect>,
+    pub empty_tile_angles: Vec<f32>,
     pub title: Option<egui::Rect>,
     pub status: Option<egui::Rect>,
     pub dialog: Option<egui::Rect>,
@@ -90,7 +104,6 @@ pub(crate) struct Audit {
     pub row_actions: Vec<(egui::Rect, egui::Rect)>,
     pub row_action_art: Vec<(egui::Rect, egui::Rect)>,
     pub row_action_ink: Vec<egui::Color32>,
-    pub clear_search: Option<egui::Rect>,
     pub import_art: Option<egui::Rect>,
     pub import_title: Option<egui::Rect>,
     pub import_formats: Option<egui::Rect>,
@@ -232,6 +245,10 @@ impl CavalryKitApp {
     }
     pub(crate) fn p(&self) -> t::Palette {
         t::palette(self.prefs())
+    }
+    /// Palette to paint this frame: eases toward `p()` during a theme switch.
+    pub(crate) fn paint_palette(&self, ctx: &egui::Context) -> t::Palette {
+        super::motion::themed_palette(ctx, self.p(), 0.30).0
     }
     pub(crate) fn apply_style(&mut self, ctx: &egui::Context) {
         let key = StyleKey::from(self.prefs());
@@ -559,6 +576,7 @@ impl CavalryKitApp {
             self.resolved.clear();
             self.outcome = Some(Outcome {
                 skipped: names,
+                duplicates: std::mem::take(&mut plan.duplicates),
                 failures: std::mem::take(&mut plan.failures),
                 ..Default::default()
             });
@@ -666,7 +684,11 @@ impl CavalryKitApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.push_toast(self.tr(K::BusyClose));
         }
-        let p = self.p();
+        let (p, theme_animating) = super::motion::themed_palette(ctx, self.p(), 0.30);
+        if theme_animating {
+            // Stock widgets (text edits, checkboxes) ease through the same colors.
+            t::apply_palette(ctx, self.prefs(), p);
+        }
         let modal_open = self.modal_active();
         let compact = ctx.screen_rect().width() < 850.0;
         let gap = if compact { t::MD } else { t::LG };
@@ -811,6 +833,11 @@ impl CavalryKitApp {
                 });
             }
         }
+        if (112..128).contains(&frame) {
+            if let Some(rect) = self.audit.navigation.first() {
+                point = rect.center();
+            }
+        }
         if frame == 150 {
             self.open_settings();
         }
@@ -898,6 +925,15 @@ impl CavalryKitApp {
             "stopped" => app.cavalry_running = false,
             "plugins" => app.filter = Filter::Plugins,
             "scripts" => app.filter = Filter::Scripts,
+            "no-results" | "hover-empty" | "hover-clear" => {
+                app.search = "missing-script-or-plugin".into()
+            }
+            "duplicate-result" => {
+                app.outcome = Some(Outcome {
+                    duplicates: vec!["Text Time Roll.js".into(), "Shape Toolkit".into()],
+                    ..Default::default()
+                })
+            }
             "settings" => app.open_settings(),
             "custom" => {
                 app.open_settings();
@@ -1770,7 +1806,7 @@ mod tests {
         );
     }
     #[test]
-    fn search_icon_and_blank_padding_focus_input_but_clear_remains_separate() {
+    fn search_icon_and_blank_padding_focus_the_input() {
         let (ctx, mut app) = fixture();
         let mut tick = 0.0;
         settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
@@ -1790,11 +1826,153 @@ mod tests {
         }
         app.search = "test".into();
         settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
-        let clear = app.audit.clear_search.unwrap().center();
-        mouse_click(&ctx, &mut app, clear, &mut tick);
-        assert!(app.search.is_empty());
+        // 没有 × 按钮：点击右端空白仍然只是聚焦，清空由空状态按钮或键盘完成。
+        ctx.memory_mut(|m| m.surrender_focus(id));
+        mouse_click(
+            &ctx,
+            &mut app,
+            search.right_center() - egui::vec2(6.0, 0.0),
+            &mut tick,
+        );
+        assert_eq!(app.search, "test");
         assert!(ctx.memory(|m| m.has_focus(id)));
     }
+    #[test]
+    fn empty_card_hover_animates_all_content_without_moving_targets() {
+        let (ctx, mut app) = fixture();
+        app.search = "missing".into();
+        let mut tick = 0.0;
+        settle(&ctx, &mut app, [900.0, 620.0], &mut tick);
+        let card = app.audit.empty_card.unwrap();
+        let hit = app.audit.empty_card_hit.unwrap();
+        let clear = app.audit.empty_clear.unwrap();
+        let clear_visual = app.audit.empty_clear_visual.unwrap();
+        let clear_icon = app.audit.empty_clear_icon.unwrap();
+        let center = card.center();
+        assert!(
+            hit.width() > 480.0 && hit.height() >= 360.0,
+            "empty hero should remain spacious: {hit:?}"
+        );
+        let output = render(&ctx, &mut app, [900.0, 620.0], tick);
+        let card_shape = output
+            .shapes
+            .iter()
+            .find_map(|clipped| {
+                if let egui::Shape::Rect(shape) = &clipped.shape {
+                    (shape.rect == card).then_some(shape)
+                } else {
+                    None
+                }
+            })
+            .expect("empty card shape");
+        let tone = t::category(app.p(), false);
+        assert_eq!(card_shape.stroke.width, 0.5);
+        assert_eq!(
+            card_shape.stroke.color,
+            t::mix(app.p().line, tone.color, 0.02)
+        );
+        assert!(hit.contains_rect(card));
+        let resting = app.audit.empty_decorations.clone();
+        let resting_dots = app.audit.empty_dots.clone();
+        assert_eq!(resting.len(), 3);
+        assert_eq!(resting_dots.len(), 4);
+        assert!(resting.iter().all(|rect| hit.contains_rect(*rect)));
+        assert!(resting[2].left() - resting[0].right() >= 5.9);
+        assert!(resting[1].left() - resting[2].right() >= 5.9);
+        assert!(resting[0].center().y > resting[1].center().y);
+        let angles = &app.audit.empty_tile_angles;
+        assert_eq!(angles.len(), 3);
+        assert!(angles[0] < 0.0 && angles[1] > 0.0 && angles[2] == 0.0);
+        let cluster = app.audit.empty_cluster.unwrap();
+        let title_slot = app.audit.empty_title_slot.unwrap();
+        let hint_slot = app.audit.empty_hint_slot.unwrap();
+        assert!((title_slot.top() - cluster.bottom() - 32.0).abs() < 0.01);
+        assert!((hint_slot.top() - title_slot.bottom() - 16.0).abs() < 0.01);
+        assert!((clear.top() - hint_slot.bottom() - 24.0).abs() < 0.01);
+        assert_eq!(
+            app.audit.empty_hint.as_deref(),
+            Some(app.settings.language.tr(K::NoResultsHint))
+        );
+        assert!(!app.audit.empty_hint.as_deref().unwrap().contains("missing"));
+        let title_visual = app.audit.empty_title_visual.unwrap();
+        let hint_visual = app.audit.empty_hint_visual.unwrap();
+        let hero_center = resting[2].center();
+        let mut intermediate = None;
+        for (index, time) in [tick + 0.2, tick + 0.32, tick + 0.5]
+            .into_iter()
+            .enumerate()
+        {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    time: Some(time),
+                    events: vec![egui::Event::PointerMoved(center)],
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+            if index == 1 {
+                intermediate = Some(app.audit.empty_decorations.clone());
+            }
+        }
+        let hovered = app.audit.empty_card.unwrap();
+        let hovered_tiles = app.audit.empty_decorations.clone();
+        let hovered_dots = app.audit.empty_dots.clone();
+        let intermediate = intermediate.expect("intermediate illustration");
+        assert!(hovered.width() > card.width());
+        assert!(hovered.height() > card.height());
+        assert_eq!(hovered.center(), center);
+        assert!(hit.contains_rect(hovered));
+        assert!(hovered_tiles[0].center().x < resting[0].center().x);
+        assert!(hovered_tiles[1].center().x > resting[1].center().x);
+        assert!(hovered_tiles[2].center().y < resting[2].center().y);
+        assert!(hovered_tiles[2].width() > resting[2].width());
+        assert!(intermediate[2].width() > resting[2].width());
+        assert!(intermediate[2].width() < hovered_tiles[2].width());
+        assert!(hovered_tiles.iter().all(|rect| hit.contains_rect(*rect)));
+        for (before, after) in resting_dots.iter().zip(&hovered_dots) {
+            assert!(
+                (after.center() - hero_center).length() > (before.center() - hero_center).length()
+            );
+            assert!(after.width() > before.width());
+            assert!(hit.contains_rect(*after));
+        }
+        assert!(app.audit.empty_title_visual.unwrap().top() < title_visual.top());
+        assert!(app.audit.empty_hint_visual.unwrap().top() < hint_visual.top());
+        assert_eq!(app.audit.empty_title_slot, Some(title_slot));
+        assert_eq!(app.audit.empty_hint_slot, Some(hint_slot));
+        let group_clear_visual = app.audit.empty_clear_visual.unwrap();
+        assert!(group_clear_visual.width() > clear_visual.width());
+        for time in [tick + 0.7, tick + 0.82, tick + 1.0] {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 620.0),
+                    )),
+                    time: Some(time),
+                    events: vec![egui::Event::PointerMoved(clear.center())],
+                    ..Default::default()
+                },
+                |ctx| app.draw(ctx),
+            );
+        }
+        let direct_clear_visual = app.audit.empty_clear_visual.unwrap();
+        let direct_clear_icon = app.audit.empty_clear_icon.unwrap();
+        assert!(direct_clear_visual.width() > group_clear_visual.width());
+        assert!(direct_clear_icon.width() > clear_icon.width());
+        assert!(hit.contains_rect(direct_clear_visual));
+        assert_eq!(app.audit.empty_card_hit, Some(hit));
+        assert_eq!(app.audit.empty_clear, Some(clear));
+        assert_eq!(app.search, "missing");
+        tick += 1.0;
+        mouse_click(&ctx, &mut app, clear.center(), &mut tick);
+        assert!(app.search.is_empty());
+    }
+
     #[test]
     fn ordinary_mouse_hover_animates_the_large_card_after_reactive_idle() {
         let (ctx, mut app) = fixture();
@@ -2202,6 +2380,7 @@ mod tests {
         app.pending_plan = Some(InstallPlan {
             units: vec![],
             conflicts: vec![],
+            duplicates: vec![],
             failures: vec![],
             _temp: Some(TempGuard(temp.path().join("unused"))),
         });
@@ -2216,6 +2395,7 @@ mod tests {
         app.pending_plan = Some(InstallPlan {
             units: vec![],
             conflicts: vec![],
+            duplicates: vec![],
             failures: vec![("broken.zip".into(), "invalid archive".into())],
             _temp: None,
         });

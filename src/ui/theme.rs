@@ -6,6 +6,7 @@ pub const SM: f32 = 8.0;
 pub const MD: f32 = 16.0;
 pub const LG: f32 = 24.0;
 pub const CONTROL: f32 = 40.0;
+pub const SHORTCUT_HEIGHT: f32 = 40.0;
 pub const SEARCH_HEIGHT: f32 = 44.0;
 pub const ROW: f32 = 64.0;
 pub const LIST_GUTTER: f32 = 16.0;
@@ -13,7 +14,7 @@ pub const ROW_INSET: f32 = 4.0;
 pub const HEADER: f32 = 40.0;
 pub const RADIUS: u8 = 6;
 pub const CARD_RADIUS: u8 = 8;
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Palette {
     pub bg: Color32,
     pub panel: Color32,
@@ -41,6 +42,29 @@ pub fn mix(a: Color32, b: Color32, k: f32) -> Color32 {
     rgb(std::array::from_fn(|i| {
         (a[i] as f32 * (1.0_f32 - k) + b[i] as f32 * k).round() as u8
     }))
+}
+/// Frame-by-frame blend between two complete palettes (theme switching). The `dark`
+/// contrast direction flips at the midpoint; every surface/ink color eases together.
+pub fn lerp_palette(a: Palette, b: Palette, k: f32) -> Palette {
+    Palette {
+        bg: mix(a.bg, b.bg, k),
+        panel: mix(a.panel, b.panel, k),
+        surface: mix(a.surface, b.surface, k),
+        raised: mix(a.raised, b.raised, k),
+        text: mix(a.text, b.text, k),
+        muted: mix(a.muted, b.muted, k),
+        border: mix(a.border, b.border, k),
+        line: mix(a.line, b.line, k),
+        selected: mix(a.selected, b.selected, k),
+        accent: mix(a.accent, b.accent, k),
+        on_accent: mix(a.on_accent, b.on_accent, k),
+        accent_text: mix(a.accent_text, b.accent_text, k),
+        danger: mix(a.danger, b.danger, k),
+        success: mix(a.success, b.success, k),
+        warning: mix(a.warning, b.warning, k),
+        focus: mix(a.focus, b.focus, k),
+        dark: if k < 0.5 { a.dark } else { b.dark },
+    }
 }
 pub fn luminance(c: Color32) -> f32 {
     let linear = |v: u8| {
@@ -278,7 +302,7 @@ pub fn shortcut(
     p: Palette,
 ) -> egui::Response {
     let (rect, r) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), CONTROL),
+        Vec2::new(ui.available_width(), SHORTCUT_HEIGHT),
         egui::Sense::click(),
     );
     r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label));
@@ -288,38 +312,43 @@ pub fn shortcut(
         ui.is_enabled() && (r.hovered() || r.has_focus()),
     );
     let bg = mix(p.surface, p.raised, amount * 0.65);
+    let scale = 1.0 + amount * 0.03;
+    let card_rect = egui::Rect::from_center_size(rect.center(), rect.size() * (scale / 1.03));
     ui.painter().rect(
-        rect,
+        card_rect,
         CARD_RADIUS,
         bg,
         egui::Stroke::new(if r.has_focus() { 2.0_f32 } else { amount }, tone.color),
         egui::StrokeKind::Inside,
     );
-    ui.painter().rect_filled(
-        egui::Rect::from_min_size(
-            rect.min + Vec2::new(0.0, 8.0),
-            Vec2::new(2.0, rect.height() - 16.0),
-        ),
-        1,
-        tone.color,
-    );
-    let center = egui::pos2(rect.left() + 22.0, rect.center().y);
+    let center = egui::pos2(card_rect.left() + 22.0 * scale, card_rect.center().y);
     super::icons::paint(
         ui.painter(),
-        egui::Rect::from_center_size(center, Vec2::splat(17.0)),
+        egui::Rect::from_center_size(center, Vec2::splat(18.0 * scale)),
         icon,
-        tone.color,
+        mix(p.muted, tone.color, 0.55 + 0.45 * amount),
     );
     let mut job = egui::text::LayoutJob::simple(
         label.into(),
-        font(13.0),
+        font(13.5 * scale),
         mix(p.muted, p.text, amount),
-        (rect.width() - 56.0).max(40.0),
+        (card_rect.width() - 56.0 * scale).max(40.0),
     );
     job.wrap.max_rows = 2;
     let g = ui.painter().layout_job(job);
+    ui.painter().galley(
+        left_ink(card_rect.left() + 40.0 * scale, card_rect.center().y, &g),
+        g,
+        p.text,
+    );
+    // The accent rail grows and brightens with hover; the hit region never moves.
+    let rail_h = (rect.height() - 16.0) * (0.52 + 0.24 * amount);
+    let rail = egui::Rect::from_min_size(
+        egui::pos2(card_rect.left(), card_rect.center().y - rail_h / 2.0),
+        Vec2::new(2.0 + 2.0 * amount, rail_h),
+    );
     ui.painter()
-        .galley(left_ink(rect.left() + 40.0, rect.center().y, &g), g, p.text);
+        .rect_filled(rail, 1, mix(p.surface, tone.color, 0.55 + 0.45 * amount));
     r.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 /// Full-width, soft-tinted action below the drop surface. Icon/label share one hit region.
@@ -575,7 +604,11 @@ pub fn apply(ctx: &egui::Context) {
     apply_settings(ctx, &Settings::default());
 }
 pub fn apply_settings(ctx: &egui::Context, s: &Settings) {
-    let p = palette(s);
+    apply_palette(ctx, s, palette(s));
+}
+/// Same style application with an explicit palette, used by the theme transition so
+/// stock egui widgets ease through the same intermediate colors as custom painting.
+pub fn apply_palette(ctx: &egui::Context, s: &Settings, p: Palette) {
     // Select the egui style bank explicitly before editing it. Native theme notifications
     // must not silently replace custom colors with the default system light/dark style.
     ctx.set_theme(if p.dark {
@@ -780,6 +813,82 @@ pub fn button(ui: &mut egui::Ui, label: &str, kind: Button, p: Palette) -> egui:
     } else {
         response
     }
+}
+
+pub fn secondary_icon_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    icon: super::icons::Icon,
+    p: Palette,
+    group_hover: f32,
+) -> (egui::Response, egui::Rect, egui::Rect) {
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.into(), medium(13.0), p.text);
+    let icon_size = 16.0;
+    let content_width = icon_size + SM + galley.size().x;
+    let size = Vec2::new(
+        (content_width + 2.0 * MD).max(64.0),
+        (galley.size().y + 2.0 * SM).max(CONTROL),
+    );
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+    });
+    let hover = motion(
+        ui,
+        response.id.with("hover"),
+        ui.is_enabled() && (response.hovered() || response.has_focus()),
+    );
+    let press = motion(
+        ui,
+        response.id.with("press"),
+        ui.is_enabled() && response.is_pointer_button_down_on(),
+    );
+    let amount = (group_hover * 0.35 + hover).clamp(0.0, 1.0);
+    let scale = 1.0 + amount * 0.04;
+    let visual = egui::Rect::from_center_size(rect.center(), rect.size() * scale);
+    let fill = mix(
+        neutral_surface(p),
+        p.raised,
+        (amount * 0.65 + press * 0.35).min(1.0),
+    );
+    let border = if response.has_focus() {
+        egui::Stroke::new(2.0_f32, p.focus)
+    } else {
+        egui::Stroke::new(
+            0.5 + amount * 0.5,
+            mix(neutral_stroke(p).color, p.accent, amount * 0.55),
+        )
+    };
+    ui.painter()
+        .rect(visual, RADIUS, fill, border, egui::StrokeKind::Inside);
+    let left = visual.center().x - content_width * scale / 2.0;
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(left + icon_size * scale / 2.0, visual.center().y + press),
+        Vec2::splat(icon_size * scale),
+    );
+    super::icons::paint(
+        ui.painter(),
+        icon_rect,
+        icon,
+        mix(p.muted, p.accent, 0.45 + amount * 0.55),
+    );
+    ui.painter().galley(
+        left_ink(
+            left + (icon_size + SM) * scale,
+            visual.center().y + press,
+            &galley,
+        ),
+        galley,
+        mix(p.text, p.accent, amount * 0.18),
+    );
+    let response = if ui.is_enabled() {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    };
+    (response, visual, icon_rect)
 }
 /// Small square inputs must not inherit the large button radius or low-contrast divider.
 pub fn checkbox(ui: &mut egui::Ui, value: &mut bool, label: &str, p: Palette) -> egui::Response {
@@ -1269,6 +1378,106 @@ mod tests {
         }
         assert_eq!(bounds[0], bounds[1]);
     }
+    #[test]
+    fn shortcut_accent_rail_grows_and_brightens_without_moving_its_hit_region() {
+        let ctx = egui::Context::default();
+        crate::ui::fonts::setup(&ctx);
+        let settings = Settings::default();
+        apply_settings(&ctx, &settings);
+        let p = palette(&settings);
+        let mut hit = None;
+        let mut rails = Vec::new();
+        let mut cards = Vec::new();
+        for time in [0.0, 0.1, 0.2, 0.5] {
+            let events = hit
+                .map(|rect: egui::Rect| egui::Event::PointerMoved(rect.center()))
+                .into_iter()
+                .collect();
+            let mut current = egui::Rect::NOTHING;
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(240.0, 120.0),
+                    )),
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        current = shortcut(
+                            ui,
+                            "脚本目录",
+                            crate::ui::icons::Icon::Folder,
+                            category(p, false),
+                            p,
+                        )
+                        .rect;
+                    });
+                },
+            );
+            if let Some(previous) = hit {
+                assert_eq!(current, previous);
+            }
+            hit = Some(current);
+            let card = output
+                .shapes
+                .iter()
+                .find_map(|clipped| {
+                    if let egui::Shape::Rect(shape) = &clipped.shape {
+                        (shape.stroke.color == category(p, false).color
+                            && shape.rect.width() > current.width() - 20.0
+                            && shape.rect.height() > current.height() - 10.0)
+                            .then_some(shape.rect)
+                    } else {
+                        None
+                    }
+                })
+                .expect("shortcut card");
+            cards.push(card);
+            let rail = output
+                .shapes
+                .iter()
+                .find_map(|clipped| {
+                    if let egui::Shape::Rect(shape) = &clipped.shape {
+                        (shape.rect.width() <= 4.01
+                            && shape.rect.height() >= 10.0
+                            && shape.rect.left() >= current.left() - 0.01
+                            && shape.rect.left() <= current.left() + 4.01)
+                            .then_some((shape.rect, shape.fill))
+                    } else {
+                        None
+                    }
+                })
+                .expect("shortcut accent rail");
+            rails.push(rail);
+            assert!(!output.shapes.iter().any(|clipped| {
+                if let egui::Shape::Rect(shape) = &clipped.shape {
+                    shape.rect.width() == 26.0 && shape.rect.height() == 26.0
+                } else {
+                    false
+                }
+            }));
+        }
+        assert_eq!(rails[1].0.height(), rails[0].0.height());
+        assert!(rails[2].0.height() > rails[1].0.height());
+        assert!((rails[3].0.height() - 18.24).abs() < 0.01);
+        assert!(luminance(rails[2].1) > luminance(rails[0].1));
+        assert!(hit.is_some_and(|rect| rails.iter().all(|(rail, _)| rect.contains_rect(*rail))));
+        assert!(cards[2].width() > cards[0].width());
+        assert!(cards[2].height() > cards[0].height());
+        assert!(cards[3].width() >= cards[2].width());
+        assert!(cards[3].height() >= cards[2].height());
+        let hit = hit.unwrap();
+        for card in cards {
+            assert!(
+                hit.expand(0.01).contains_rect(card),
+                "card clipped: {card:?} / {hit:?}"
+            );
+        }
+    }
+
     #[test]
     fn group_glyph_motion_never_overflows_or_confuses_danger_feedback() {
         for theme in [Theme::Cavalry, Theme::Light] {

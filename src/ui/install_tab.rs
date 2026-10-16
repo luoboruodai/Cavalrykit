@@ -8,7 +8,7 @@ use egui::{Pos2, Rect, Stroke, Vec2};
 impl CavalryKitApp {
     /// Identity belongs to the left rail, not a second full-width title bar.
     pub(crate) fn show_brand_header(&mut self, ui: &mut egui::Ui) {
-        let p = self.p();
+        let p = self.paint_palette(ui.ctx());
         let lang = self.prefs().language;
         let (rect, _) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), t::HEADER),
@@ -103,7 +103,7 @@ impl CavalryKitApp {
         self.audit.title = Some(title_rect);
     }
     pub(crate) fn show_rail(&mut self, ui: &mut egui::Ui, _height: f32) {
-        let p = self.p();
+        let p = self.paint_palette(ui.ctx());
         let lang = self.prefs().language;
         let tone = t::category(p, false);
         let compact = ui.ctx().screen_rect().height() < 600.0;
@@ -131,7 +131,7 @@ impl CavalryKitApp {
             + t::SM
             + helper.size().y
             + section_gap
-            + 4.0 * t::CONTROL
+            + 4.0 * t::SHORTCUT_HEIGHT
             + 3.0 * nav_gap;
         let drop_height = (ui.available_height() - tail).max(112.0);
         self.show_install_stage(ui, drop_height);
@@ -214,7 +214,7 @@ impl CavalryKitApp {
         }
     }
     pub(crate) fn show_install_stage(&mut self, ui: &mut egui::Ui, height: f32) {
-        let p = self.p();
+        let p = self.paint_palette(ui.ctx());
         let lang = self.prefs().language;
         let tone = t::category(p, false);
         let (rect, _) = ui.allocate_exact_size(

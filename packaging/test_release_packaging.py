@@ -24,7 +24,7 @@ class ReleasePackageTests(unittest.TestCase):
             shutil.copy2(HERE.parent / name, self.root / name)
         self.exe = self.root / 'fixture.exe'
         self.exe.write_bytes(b'synthetic PE fixture; not executable')
-        self.dest = self.root / 'dist/CavalryKit-0.1.1-win-x64.zip'
+        self.dest = self.root / 'dist/CavalryKit-0.1.2-win-x64.zip'
         self.dest.parent.mkdir()
         self.dest.write_bytes(b'previous valid package fixture')
         self.old = self.dest.read_bytes()
@@ -41,7 +41,7 @@ class ReleasePackageTests(unittest.TestCase):
         with ZipFile(self.dest) as archive:
             self.assertEqual(archive.read('CavalryKit.exe'), self.exe.read_bytes())
             for guide in package_win.GUIDES:
-                self.assertIn('CavalryKit 0.1.1', archive.read(guide).decode('utf-8'))
+                self.assertIn('CavalryKit 0.1.2', archive.read(guide).decode('utf-8'))
 
     def test_non_utf8_default_locale_reads_utf8_sources(self):
         real_open = io.open
@@ -57,7 +57,7 @@ class ReleasePackageTests(unittest.TestCase):
 
     def test_stale_guide_preserves_previous_package(self):
         guide = self.root / 'packaging/INSTALL.en.txt'
-        guide.write_text(guide.read_text(encoding='utf-8').replace('0.1.1', '0.1.0'), encoding='utf-8')
+        guide.write_text(guide.read_text(encoding='utf-8').replace('0.1.2', '0.1.0'), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'version mismatch'):
             package_win.package(self.exe, self.root)
         self.assertEqual(self.dest.read_bytes(), self.old)
@@ -84,7 +84,7 @@ class ReleasePackageTests(unittest.TestCase):
 
     def test_extra_member_is_rejected(self):
         package_win.package(self.exe, self.root)
-        expected = package_win.release_members(self.root, self.exe, '0.1.1')
+        expected = package_win.release_members(self.root, self.exe, '0.1.2')
         with ZipFile(self.dest, 'a') as archive:
             archive.writestr('unexpected-config.json', '{}')
         with self.assertRaisesRegex(ValueError, 'member list'):
@@ -93,7 +93,7 @@ class ReleasePackageTests(unittest.TestCase):
     def test_changed_binary_is_rejected(self):
         package_win.package(self.exe, self.root)
         self.exe.write_bytes(b'changed synthetic executable')
-        expected = package_win.release_members(self.root, self.exe, '0.1.1')
+        expected = package_win.release_members(self.root, self.exe, '0.1.2')
         with self.assertRaisesRegex(ValueError, 'frozen input'):
             package_win.validate_archive(self.dest, expected)
 

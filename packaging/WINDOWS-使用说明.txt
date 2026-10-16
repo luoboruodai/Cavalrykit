@@ -1,4 +1,4 @@
-CavalryKit 0.1.1 — Windows x64
+CavalryKit 0.1.2 — Windows x64
 
 推荐安装 / 更新：
 1. 完整解压 ZIP；不要直接从压缩包里运行。

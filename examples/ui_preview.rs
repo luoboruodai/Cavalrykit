@@ -94,6 +94,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Language::Zh, "mixed-names"),
         (Language::Zh, "light-mixed-names"),
         (Language::Zh, "search-hint"),
+        (Language::Zh, "no-results"),
+        (Language::Zh, "hover-empty"),
+        (Language::Zh, "light-hover-empty"),
+        (Language::Zh, "hover-clear"),
+        (Language::Zh, "light-hover-clear"),
+        (Language::Zh, "hover-empty-small"),
+        (Language::En, "no-results"),
+        (Language::Ja, "no-results"),
+        (Language::Ko, "no-results"),
+        (Language::Zh, "light-no-results"),
+        (Language::Zh, "no-results-small"),
+        (Language::En, "no-results-small"),
+        (Language::Zh, "duplicate-result"),
         (Language::Zh, "hover-search"),
         (Language::Zh, "light-hover-search"),
         (Language::Zh, "light-settings"),
@@ -164,6 +177,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         vec![egui::Event::PointerMoved(egui::pos2(140.0, 200.0))]
                     } else if screen.ends_with("hover-row") {
                         vec![egui::Event::PointerMoved(egui::pos2(620.0, 166.0))]
+                    } else if screen.contains("hover-empty") {
+                        vec![egui::Event::PointerMoved(if compact {
+                            egui::pos2(488.0, 306.0)
+                        } else {
+                            egui::pos2(712.0, 438.0)
+                        })]
+                    } else if screen.contains("hover-clear") {
+                        vec![egui::Event::PointerMoved(if compact {
+                            egui::pos2(487.0, 404.0)
+                        } else {
+                            egui::pos2(712.0, 567.0)
+                        })]
                     } else {
                         vec![]
                     },

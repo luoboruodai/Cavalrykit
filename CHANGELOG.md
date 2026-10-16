@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.1.2 — 2026-10-16
+
+### build 32 / 空结果面板分隔灰度
+- Use the sidebar's low-contrast `p.line` divider instead of the brighter `p.border` for the empty panel; keep only a 2% resting accent and a restrained hover response while leaving every other component unchanged.
+
+### build 31 / 扇形图标与中性弱描边
+- Give the side cards opposite small angles and different heights while keeping the central card level; rotate each icon with its card and spread the decorative dots without changing fixed targets.
+- Replace the empty panel's abrupt green outline with a quieter neutral stroke that only gains a restrained accent on hover.
+
+### build 30 / 空状态间距层级与清除动作
+- Give the resting illustration real separation before hover, and use 32/16/24pt spacing between the illustration, title, helper and action while retaining compact fallbacks.
+- Remove the dynamic query from the helper, restore the fixed four-language guidance and regenerate the six UI font subsets.
+- Add a Close icon to Clear search; animate the title/helper and button with restrained group hover, then strengthen the button's own visual/icon feedback without a left accent rail or moving hit targets.
+
+### build 29 / 空状态层叠插画与内部联动
+- Recompose the empty-search illustration as a front search card with layered Script/Plugin cards and restrained dots, preserving the spacious panel, query explanation and fixed targets.
+- Drive the cards, icons and decorative dots from the existing finite hover progress: rear cards spread, the central card and icon lift and grow, and reduced motion still settles immediately without an idle repaint loop.
+
+### build 28 / 大气化空状态与绿条修正
+- Replace the compact empty-state card with a spacious panel: an 88pt central state icon, two 60pt supporting tiles and restrained decorative dots, while preserving the current palette and fixed hit regions.
+- Integrate the query into a clear four-language explanation instead of a standalone line; keep Clear search and do not add unrelated creation actions.
+- Increase shortcut accent rails from 52% to 76% of the inner height so the resting rail is easier to perceive without restoring excessive height.
+
+### build 27 / 搜索空状态的参考化层级
+- Surround the central empty-state icon with restrained script, plugin, folder and library glyphs while preserving the existing vector icon set and avoiding unrelated actions.
+- Show the active search query on its own line above the existing guidance, truncate only the displayed long query, and keep Clear search and its hit target unchanged.
+
+### build 26 / 间距、空状态层级与渲染减负
+- Restore 40pt shortcut spacing and keep accent rails at 42%–68% of the inner height; compute bounded center-out card geometry directly so every animation frame stays inside the original hit region.
+- Enlarge the no-results card to 480pt with a 64pt icon, 20pt title and 14pt helper text, while reducing the resting accent outline to 12% and preserving the clear action's fixed target.
+- Skip identity visual transforms for settled library rows and remove the shortcut's whole-subtree transform as targeted rendering overhead reduction; this is not a claim that every GPU or system stall is eliminated.
+
+### build 25 / 整体动效与视觉协调
+- Animate the complete shortcut card, including its icon and label, with a bounded center-out scale that never clips the parent region.
+- Soften the empty card’s resting outline and enlarge its content while preserving fixed hit targets and consistent spacing.
+
+### build 24 / 空结果交互与快捷入口反馈
+- Paint the empty state as one centered card with import-like hover feedback; keep its hit region fixed and center helper text by actual ink bounds.
+- Lengthen shortcut accent rails and add subtle card scaling while keeping rail geometry and click targets inside their original hit regions.
+
+### build 23 / 空状态间距、图标反馈与缓动细化
+- Center no-results content in a compact 360pt card with 24pt padding, 48pt icon tile, and 16/8pt spacing between title, hint, and action.
+- Remove green backplates from shortcut icons while preserving icon color changes, card borders, and accent-rail motion with stable hit regions.
+- Use smoothstep easing for palette transitions, keeping retargets, exact final styles, reduced motion, and stop-repaint behavior intact.
+
+## 0.1.2 — 2026-10-15
+
+### build 22 / 重复导入、空状态与交互动效
+- Skip same-named scripts and plugins as Identical only when their full contents match; preserve conflict choices for different content and never turn read failures into a silent skip.
+- Redesign the no-results state with an icon tile, hierarchical guidance and a Clear search action; remove the separate × from the search field.
+- Grow and brighten shortcut accent rails on hover/focus without moving their hit regions.
+- Interpolate the complete palette for about 0.3 seconds on appearance changes and cancellation, with exact final-style application, reduced-motion fallback and no idle repaint loop.
+- Regenerate all six regional UI font subsets for the new duplicate-status strings.
+
 ## 0.1.1 — 2026-10-14
 
 ### 正式发布 / Release summary

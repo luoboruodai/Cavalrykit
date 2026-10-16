@@ -21,20 +21,28 @@ pub enum Icon {
     AppLocation,
 }
 pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
+    paint_rotated(p, rect, icon, color, 0.0);
+}
+pub fn paint_rotated(p: &Painter, rect: Rect, icon: Icon, color: Color32, angle: f32) {
     let c = rect.center();
     let scale = rect.width().min(rect.height()) / 20.0;
-    let point = |x, y| c + Vec2::new(x, y) * scale;
+    let (sin, cos) = angle.sin_cos();
+    let point = |x, y| {
+        let x = x * scale;
+        let y = y * scale;
+        c + Vec2::new(x * cos - y * sin, x * sin + y * cos)
+    };
     let stroke = Stroke::new(1.4 * scale, color);
     let line = |a: (f32, f32), b: (f32, f32)| {
         p.line_segment([point(a.0, a.1), point(b.0, b.1)], stroke);
     };
     let box_at = |x, y, w, h| {
-        p.rect_stroke(
-            Rect::from_center_size(point(x, y), Vec2::new(w, h) * scale),
-            2,
-            stroke,
-            egui::StrokeKind::Inside,
-        );
+        let rect = Rect::from_center_size(point(x, y), Vec2::new(w, h) * scale);
+        if angle == 0.0 {
+            p.rect_stroke(rect, 2, stroke, egui::StrokeKind::Inside);
+        } else {
+            rect_rotated(p, rect, 2.0, angle, Color32::TRANSPARENT, stroke);
+        }
     };
     match icon {
         Icon::More => {
@@ -159,6 +167,53 @@ pub fn paint(p: &Painter, rect: Rect, icon: Icon, color: Color32) {
     }
 }
 
+pub fn rect_rotated(
+    p: &Painter,
+    rect: Rect,
+    radius: f32,
+    angle: f32,
+    fill: Color32,
+    stroke: Stroke,
+) {
+    let inset = (stroke.width * 0.5)
+        .max(0.0)
+        .min(rect.width().min(rect.height()) * 0.45);
+    let rect = rect.shrink(inset);
+    let radius = radius.max(0.0).min(rect.width().min(rect.height()) * 0.5);
+    let center = rect.center();
+    let (sin, cos) = angle.sin_cos();
+    let rotate = |point: egui::Pos2| {
+        let delta = point - center;
+        center + Vec2::new(delta.x * cos - delta.y * sin, delta.x * sin + delta.y * cos)
+    };
+    let corners = [
+        (
+            egui::pos2(rect.left() + radius, rect.top() + radius),
+            std::f32::consts::PI,
+        ),
+        (
+            egui::pos2(rect.right() - radius, rect.top() + radius),
+            std::f32::consts::PI * 1.5,
+        ),
+        (
+            egui::pos2(rect.right() - radius, rect.bottom() - radius),
+            0.0,
+        ),
+        (
+            egui::pos2(rect.left() + radius, rect.bottom() - radius),
+            std::f32::consts::FRAC_PI_2,
+        ),
+    ];
+    let mut points = Vec::with_capacity(20);
+    for (corner, start) in corners {
+        for step in 0..=4 {
+            let a = start + std::f32::consts::FRAC_PI_2 * step as f32 / 4.0;
+            points.push(rotate(corner + Vec2::angled(a) * radius));
+        }
+    }
+    p.add(egui::Shape::convex_polygon(points, fill, stroke));
+}
+
 /// One continuous circular arrow. The arrow tip is exactly the end of the arc.
 pub fn paint_refresh(p: &Painter, rect: Rect, color: Color32, angle: f32) {
     let scale = rect.width().min(rect.height()) / 20.0;
@@ -262,6 +317,42 @@ mod tests {
                         shape.shape.visual_bounding_rect()
                     );
                 }
+            }
+        }
+    }
+    #[test]
+    fn rotated_cards_and_icons_stay_inside_their_audit_bounds() {
+        let ctx = egui::Context::default();
+        for angle in [-0.14, -0.10, 0.08, 0.12] {
+            let slot = Rect::from_min_size(Pos2::new(40.0, 40.0), Vec2::new(76.0, 56.0));
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                let painter = ctx.layer_painter(egui::LayerId::new(
+                    egui::Order::Foreground,
+                    egui::Id::new("rotated-icon-test"),
+                ));
+                rect_rotated(
+                    &painter,
+                    slot,
+                    12.0,
+                    angle,
+                    Color32::TRANSPARENT,
+                    Stroke::new(0.5_f32, Color32::WHITE),
+                );
+                paint_rotated(
+                    &painter,
+                    Rect::from_center_size(slot.center(), Vec2::splat(24.0)),
+                    Icon::Script,
+                    Color32::WHITE,
+                    angle,
+                );
+            });
+            for shape in output.shapes {
+                assert!(
+                    slot.expand(4.1)
+                        .contains_rect(shape.shape.visual_bounding_rect()),
+                    "{angle}: {:?}",
+                    shape.shape.visual_bounding_rect()
+                );
             }
         }
     }

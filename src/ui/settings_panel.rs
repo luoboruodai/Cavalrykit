@@ -15,7 +15,7 @@ impl CavalryKitApp {
     pub(crate) fn show_settings(&mut self, ctx: &egui::Context) {
         let mut draft = self.settings_draft.as_ref().unwrap().clone();
         let lang = draft.language;
-        let p = t::palette(&draft);
+        let p = self.paint_palette(ctx);
         let saving = self.busy == Some(K::SaveBusy);
         let can_save = self.busy.is_none();
         let error = self.settings_error.clone();
@@ -191,7 +191,7 @@ impl CavalryKitApp {
                                             }
                                             Section::Appearance => {
                                                 label(ui, lang.tr(K::ThemeLabel), p);
-                                                theme_choices(ui, &mut draft);
+                                                theme_choices(ui, &mut draft, p);
                                                 ui.add_space(t::MD);
                                                 if draft.theme == Theme::Custom {
                                                     color_row(
@@ -404,8 +404,7 @@ fn color_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3], p: t::Palette)
         });
     });
 }
-fn theme_choices(ui: &mut egui::Ui, draft: &mut Settings) {
-    let p = t::palette(draft);
+fn theme_choices(ui: &mut egui::Ui, draft: &mut Settings, p: t::Palette) {
     let lang = draft.language;
     let width = (ui.available_width() - 2.0_f32 * t::SM) / 3.0;
     ui.horizontal(|ui| {

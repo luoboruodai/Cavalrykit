@@ -4,7 +4,7 @@ use egui::Vec2;
 use std::sync::atomic::Ordering;
 impl CavalryKitApp {
     pub(crate) fn show_conflict_dialog(&mut self, ctx: &egui::Context) {
-        let p = self.p();
+        let p = self.paint_palette(ctx);
         let lang = self.prefs().language;
         let unit = self.conflicts.front().unwrap();
         let name = unit.display.clone();
@@ -67,15 +67,16 @@ impl CavalryKitApp {
         }
     }
     pub(crate) fn show_result_dialog(&mut self, ctx: &egui::Context) {
-        let p = self.p();
+        let p = self.paint_palette(ctx);
         let lang = self.prefs().language;
         let outcome = self.outcome.as_ref().unwrap();
-        let (ok, skipped, failed) = (
+        let (ok, skipped, dup, failed) = (
             outcome.installed_scripts.len() + outcome.installed_plugins.len(),
             outcome.skipped.len(),
+            outcome.duplicates.len(),
             outcome.failures.len(),
         );
-        let count = ok + skipped + failed;
+        let count = ok + skipped + dup + failed;
         let pages = count.div_ceil(12).max(1);
         self.result_page = self.result_page.min(pages - 1);
         let page = self.result_page;
@@ -88,6 +89,7 @@ impl CavalryKitApp {
             .tr(K::ResultSummary)
             .replace("{ok}", &ok.to_string())
             .replace("{skip}", &skipped.to_string())
+            .replace("{dup}", &dup.to_string())
             .replace("{fail}", &failed.to_string());
         let restart_hint = outcome.restart_hint;
         // Only materialize the current page so large imports never create unbounded result UI work.
@@ -105,8 +107,14 @@ impl CavalryKitApp {
                 ));
             } else if i < ok + skipped {
                 rows.push((K::Skipped, outcome.skipped[i - ok].clone(), None));
+            } else if i < ok + skipped + dup {
+                rows.push((
+                    K::Duplicate,
+                    outcome.duplicates[i - ok - skipped].clone(),
+                    None,
+                ));
             } else {
-                let (name, error) = &outcome.failures[i - ok - skipped];
+                let (name, error) = &outcome.failures[i - ok - skipped - dup];
                 rows.push((K::Failed, name.clone(), Some(error.clone())));
             }
         }
@@ -193,7 +201,7 @@ impl CavalryKitApp {
         }
     }
     pub(crate) fn show_restart_dialog(&mut self, ctx: &egui::Context) {
-        let p = self.p();
+        let p = self.paint_palette(ctx);
         let lang = self.prefs().language;
         let running = self.cavalry_running;
         let mut go = false;
@@ -239,7 +247,7 @@ impl CavalryKitApp {
         }
     }
     pub(crate) fn show_restart_progress(&mut self, ctx: &egui::Context) {
-        let p = self.p();
+        let p = self.paint_palette(ctx);
         let lang = self.prefs().language;
         let mut cancel = false;
         let response = t::modal(ctx, "restart-progress", p, 576.0, |ui| {
@@ -262,7 +270,7 @@ impl CavalryKitApp {
         }
     }
     pub(crate) fn show_uninstall_dialog(&mut self, ctx: &egui::Context) {
-        let p = self.p();
+        let p = self.paint_palette(ctx);
         let lang = self.prefs().language;
         let path = self.confirm_uninstall.as_ref().unwrap().clone();
         let name = path.file_name().unwrap_or_default().to_string_lossy();
@@ -295,7 +303,7 @@ impl CavalryKitApp {
         }
     }
     pub(crate) fn show_about_dialog(&mut self, ctx: &egui::Context) {
-        let p = self.p();
+        let p = self.paint_palette(ctx);
         let lang = self.prefs().language;
         let mut close = false;
         let response = t::modal(ctx, "about", p, 528.0, |ui| {
@@ -327,7 +335,7 @@ impl CavalryKitApp {
         }
     }
     pub(crate) fn show_notice(&mut self, ctx: &egui::Context) {
-        let p = self.p();
+        let p = self.paint_palette(ctx);
         let lang = self.prefs().language;
         let (key, detail) = self.notice.as_ref().unwrap().clone();
         let mut close = false;

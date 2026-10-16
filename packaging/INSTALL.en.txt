@@ -1,20 +1,20 @@
-CavalryKit 0.1.1 — Installation, upgrade and recovery (offline guide)
+CavalryKit 0.1.2 — Installation, upgrade and recovery (offline guide)
 Simplified Chinese: INSTALL.zh-CN.txt (same directory)
 Release notes: RELEASE_NOTES.md (same directory; readable in any text editor)
 
 Platforms
-- Apple Silicon macOS; internal build 21. The DMG is not an Intel universal package.
+- Apple Silicon macOS; internal build 32. The DMG is not an Intel universal package.
 - Windows 10/11 x64; the ZIP contains CavalryKit.exe and Install-CavalryKit.cmd.
 
-macOS install / upgrade from 0.1.0
+macOS install / upgrade from 0.1.1
 1. Finish active work and quit CavalryKit. Replacing this tool does not require force-quitting Cavalry.
-2. Open CavalryKit-0.1.1-mac-arm64.dmg.
+2. Open CavalryKit-0.1.2-mac-arm64.dmg.
 3. Drag CavalryKit.app to Applications and replace the existing same-named app after confirming you have a backup.
 4. Eject the image and start /Applications/CavalryKit.app, not an older DMG or renamed copy.
 5. The app is ad-hoc signed but not notarized. macOS may warn about an unverified developer. Verify the source; do not disable system protections.
 
-Windows install / upgrade from 0.1.0
-1. Fully extract CavalryKit-0.1.1-win-x64.zip. Do not run directly inside the archive.
+Windows install / upgrade from 0.1.1
+1. Fully extract CavalryKit-0.1.2-win-x64.zip. Do not run directly inside the archive.
 2. Close CavalryKit, then run Install-CavalryKit.cmd.
 3. The fixed entry point is %LOCALAPPDATA%\Programs\CavalryKit\CavalryKit.exe.
 4. Use the desktop or Start-menu CavalryKit shortcut. For a stale taskbar icon, unpin it and pin the updated shortcut.
@@ -40,6 +40,6 @@ Hosted macOS/Windows CI covers tests and packaging; Windows also covers installe
 Compare the package hash with SHA256SUMS.txt from the same release. If you downloaded only one platform, compare only that line; a missing other-platform file does not mean your download is corrupt.
 
 Online references (not required for offline use)
-Release: https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.1
-English guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.en.md
-Chinese guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.md
+Release: https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.2
+English guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.2/README.en.md
+Chinese guide: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.2/README.md

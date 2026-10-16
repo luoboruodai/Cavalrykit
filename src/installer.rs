@@ -43,6 +43,8 @@ pub struct InstallPlan {
     pub units: Vec<PlannedUnit>,
     /// 目标已存在、需要用户选择处理的冲突
     pub conflicts: Vec<PlannedUnit>,
+    /// 目标已存在且内容完全相同、无需打扰用户的重复导入
+    pub duplicates: Vec<String>,
     /// (输入名, 失败原因)
     pub failures: Vec<(String, String)>,
     /// (下划线前缀：仅用于持有守卫，不主动读取)
@@ -61,6 +63,8 @@ pub struct Outcome {
     pub installed_scripts: Vec<String>,
     pub installed_plugins: Vec<String>,
     pub skipped: Vec<String>,
+    /// 内容与已安装条目完全相同而跳过的重复导入
+    pub duplicates: Vec<String>,
     pub failures: Vec<(String, String)>,
     /// 本次安装了插件 → 需要重启 Cavalry
     pub restart_hint: bool,
@@ -95,22 +99,97 @@ pub fn plan(inputs: &[PathBuf], paths: &CavalryPaths) -> InstallPlan {
     }
 
     let mut conflicts = Vec::new();
-    let mut destinations = std::collections::HashSet::new();
+    let mut duplicates = Vec::new();
+    let mut destinations: std::collections::HashMap<PathBuf, PathBuf> =
+        std::collections::HashMap::new();
     units.retain(|u| {
-        if u.dest.exists() || !destinations.insert(u.dest.clone()) {
-            conflicts.push(u.clone());
-            false
-        } else {
-            true
+        if u.dest.exists() {
+            // 同名且内容完全相同 → 静默跳过；不同内容才交给用户做冲突三选。
+            if payloads_equal(u.kind, &u.source, &u.dest) {
+                duplicates.push(u.display.clone());
+            } else {
+                conflicts.push(u.clone());
+            }
+            return false;
+        }
+        match destinations.entry(u.dest.clone()) {
+            std::collections::hash_map::Entry::Vacant(slot) => {
+                slot.insert(u.source.clone());
+                true
+            }
+            std::collections::hash_map::Entry::Occupied(slot) => {
+                if payloads_equal(u.kind, &u.source, slot.get()) {
+                    duplicates.push(u.display.clone());
+                } else {
+                    conflicts.push(u.clone());
+                }
+                false
+            }
         }
     });
 
     InstallPlan {
         units,
         conflicts,
+        duplicates,
         failures,
         _temp: Some(TempGuard(temp)),
     }
+}
+
+/// 只有逐字节完全相同才自动跳过；读取失败时保留人工冲突确认。
+fn payloads_equal(kind: UnitKind, left: &Path, right: &Path) -> bool {
+    match kind {
+        UnitKind::Script => fs::read(left)
+            .ok()
+            .zip(fs::read(right).ok())
+            .is_some_and(|(a, b)| a == b),
+        UnitKind::Plugin => dirs_equal(left, right, 0),
+    }
+}
+
+fn dirs_equal(left: &Path, right: &Path, depth: usize) -> bool {
+    if depth > 64 {
+        return false;
+    }
+    let entries = |dir: &Path| fs::read_dir(dir).ok()?.collect::<Result<Vec<_>, _>>().ok();
+    let (Some(mut left_entries), Some(mut right_entries)) = (entries(left), entries(right)) else {
+        return false;
+    };
+    left_entries.sort_by_key(|entry| entry.file_name());
+    right_entries.sort_by_key(|entry| entry.file_name());
+    if left_entries.len() != right_entries.len() {
+        return false;
+    }
+    for (left, right) in left_entries.iter().zip(&right_entries) {
+        if left.file_name() != right.file_name() {
+            return false;
+        }
+        let (Ok(left_meta), Ok(right_meta)) = (
+            fs::symlink_metadata(left.path()),
+            fs::symlink_metadata(right.path()),
+        ) else {
+            return false;
+        };
+        let left_type = left_meta.file_type();
+        let right_type = right_meta.file_type();
+        if left_type.is_symlink() || right_type.is_symlink() || left_type != right_type {
+            return false;
+        }
+        if left_type.is_dir() {
+            if !dirs_equal(&left.path(), &right.path(), depth + 1) {
+                return false;
+            }
+        } else if left_type.is_file() {
+            match (fs::read(left.path()), fs::read(right.path())) {
+                (Ok(a), Ok(b)) if a == b => {}
+                _ => return false,
+            }
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 /// 执行安装：普通条目直接复制，冲突条目按用户选择处理。
@@ -322,6 +401,70 @@ mod tests {
     }
 
     #[test]
+    fn identical_reimport_is_a_quiet_duplicate_not_a_conflict() {
+        let dir = tmpdir("dup");
+        let paths = CavalryPaths::from_base(&dir.join("Cavalry"));
+        paths.ensure_dirs().unwrap();
+
+        let src = dir.join("Tool.jsc");
+        fs::write(&src, b"// same").unwrap();
+        let first = plan(std::slice::from_ref(&src), &paths);
+        assert_eq!(first.units.len(), 1);
+        let out = execute(first.units, vec![]);
+        assert_eq!(out.installed_scripts, vec!["Tool.jsc"]);
+
+        // 同名同内容再次导入：不装、不问、不生成 "Tool 2.jsc"
+        let again = plan(std::slice::from_ref(&src), &paths);
+        assert!(again.units.is_empty());
+        assert!(again.conflicts.is_empty());
+        assert_eq!(again.duplicates, vec!["Tool.jsc"]);
+        assert!(!paths.scripts.join("Tool 2.jsc").exists());
+
+        // 同名不同内容仍是冲突
+        fs::write(&src, b"// changed").unwrap();
+        let changed = plan(std::slice::from_ref(&src), &paths);
+        assert_eq!(changed.conflicts.len(), 1);
+        assert!(changed.duplicates.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn identical_plugin_tree_is_a_duplicate_and_batch_twin_is_detected() {
+        let dir = tmpdir("dup-plugin");
+        let paths = CavalryPaths::from_base(&dir.join("Cavalry"));
+        paths.ensure_dirs().unwrap();
+
+        let plugin = dir.join("Kit");
+        fs::create_dir_all(plugin.join("sub")).unwrap();
+        fs::write(plugin.join("definitions.json"), b"{}").unwrap();
+        fs::write(plugin.join("sub/run.js"), b"1").unwrap();
+        let first = plan(std::slice::from_ref(&plugin), &paths);
+        let out = execute(first.units, vec![]);
+        assert_eq!(out.installed_plugins, vec!["Kit"]);
+
+        let again = plan(std::slice::from_ref(&plugin), &paths);
+        assert_eq!(again.duplicates, vec!["Kit"]);
+        assert!(again.conflicts.is_empty());
+
+        // 同批两个来源内容相同、目标相同 → 第二个是重复项而非冲突
+        let twin = dir.join("copy");
+        fs::create_dir_all(twin.join("Kit/sub")).unwrap();
+        fs::write(twin.join("Kit/definitions.json"), b"{}").unwrap();
+        fs::write(twin.join("Kit/sub/run.js"), b"1").unwrap();
+        let _ = fs::remove_dir_all(paths.plugins.join("Kit"));
+        let batch = plan(&[plugin.clone(), twin.join("Kit")], &paths);
+        assert_eq!(batch.units.len(), 1);
+        assert_eq!(batch.duplicates, vec!["Kit"]);
+        assert!(batch.conflicts.is_empty());
+
+        // 插件树有一点不同 → 冲突
+        fs::write(twin.join("Kit/sub/run.js"), b"2").unwrap();
+        let batch = plan(&[plugin, twin.join("Kit")], &paths);
+        assert_eq!(batch.conflicts.len(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn conflict_strategies_overwrite_skip_keepboth() {
         let dir = tmpdir("conflict");
         let paths = CavalryPaths::from_base(&dir.join("Cavalry"));
@@ -346,6 +489,7 @@ mod tests {
         );
 
         // 冲突 → 跳过
+        fs::write(&src, b"newer").unwrap();
         let plan2 = plan(std::slice::from_ref(&src), &paths);
         let c = plan2.conflicts[0].clone();
         let out2 = execute(plan2.units, vec![(c, ConflictChoice::Skip)]);
@@ -366,7 +510,7 @@ mod tests {
         );
         assert_eq!(
             fs::read_to_string(paths.scripts.join("old 2.jsc")).unwrap(),
-            "new"
+            "newer"
         );
         let _ = fs::remove_dir_all(&dir);
     }

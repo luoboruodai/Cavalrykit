@@ -7,7 +7,7 @@ use crate::{i18n::Key as K, paths};
 use egui::{Pos2, Rect, Stroke, Vec2};
 impl CavalryKitApp {
     pub(crate) fn show_library(&mut self, ui: &mut egui::Ui) {
-        let p = self.p();
+        let p = self.paint_palette(ui.ctx());
         let lang = self.prefs().language;
         ui.spacing_mut().item_spacing.y = 0.0;
         self.update_rows();
@@ -128,43 +128,247 @@ impl CavalryKitApp {
             )
         };
         if self.rows.is_empty() {
+            let searching = !self.search.trim().is_empty();
+            let scanning = !searching && self.busy.is_some();
+            // Soft entrance once per state change; typing in the box must not replay it.
+            let enter = super::motion::reveal(
+                ui.ctx(),
+                egui::Id::new("empty-state"),
+                egui::Id::new((searching, scanning, self.filter as u8)),
+                0.45,
+            );
             ui.allocate_ui_with_layout(
                 Vec2::new(ui.available_width(), height),
                 egui::Layout::top_down(egui::Align::Center),
                 |ui| {
-                    ui.spacing_mut().item_spacing.y = t::SM;
-                    ui.add_space((height / 2.0 - 48.0).max(0.0));
-                    let searching = !self.search.trim().is_empty();
-                    ui.label(t::heading(
+                    ui.multiply_opacity(enter);
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let tone = t::category(p, false);
+                    let compact = height < 440.0;
+                    let cluster_size = if compact {
+                        Vec2::new(200.0, 120.0)
+                    } else {
+                        Vec2::new(320.0, 160.0)
+                    };
+                    let hero_gap = if compact { t::LG } else { 32.0 };
+                    let title_hint_gap = if compact { t::SM } else { t::MD };
+                    let hint_button_gap = if compact { t::MD } else { t::LG };
+                    let card_width = ui.available_width().min(680.0);
+                    let content_width = (card_width - 2.0 * t::LG).max(80.0);
+                    let show_hint = height > 96.0;
+                    let show_button = searching && height > 140.0;
+                    let title = ui.painter().layout_no_wrap(
                         lang.tr(if searching {
                             K::NoResults
-                        } else if self.busy.is_some() {
+                        } else if scanning {
                             K::ScanBusy
                         } else {
                             K::EmptyLibrary
-                        }),
-                        16.0,
-                        p,
-                    ));
-                    if height > 96.0 {
-                        ui.add(
-                            egui::Label::new(t::text(
-                                lang.tr(if searching {
-                                    K::NoResultsHint
-                                } else {
-                                    K::EmptyHint
-                                }),
-                                12.0,
-                                p.muted,
-                            ))
-                            .wrap(),
+                        })
+                        .into(),
+                        t::medium(if compact { 18.0 } else { 22.0 }),
+                        p.text,
+                    );
+                    let hint_text: String = if searching {
+                        lang.tr(K::NoResultsHint).into()
+                    } else {
+                        lang.tr(K::EmptyHint).into()
+                    };
+                    self.audit.empty_hint = Some(hint_text.clone());
+                    let hint = show_hint.then(|| {
+                        let mut job = egui::text::LayoutJob::simple(
+                            hint_text,
+                            t::font(if compact { 13.0 } else { 14.0 }),
+                            t::helper_ink(p),
+                            content_width,
+                        );
+                        job.halign = egui::Align::Center;
+                        ui.painter().layout_job(job)
+                    });
+                    let stack = cluster_size.y
+                        + hero_gap
+                        + title.size().y
+                        + if show_hint {
+                            title_hint_gap + hint.as_ref().map_or(0.0, |g| g.size().y)
+                        } else {
+                            0.0
+                        }
+                        + if show_button {
+                            hint_button_gap + t::CONTROL
+                        } else {
+                            0.0
+                        };
+                    let card_height =
+                        (stack + 2.0 * t::LG).max(if compact { 280.0 } else { 400.0 });
+                    let card_size = Vec2::new(card_width, card_height);
+                    ui.add_space(((height - card_size.y) / 2.0).max(0.0));
+                    let (_, response) = ui.allocate_exact_size(card_size, egui::Sense::hover());
+                    let hover = t::motion(
+                        ui,
+                        response.id.with("empty-card-hover"),
+                        ui.rect_contains_pointer(response.rect),
+                    );
+                    let visual_rect = egui::Rect::from_center_size(
+                        response.rect.center(),
+                        response.rect.size() * ((1.0 + hover * 0.02) / 1.02),
+                    );
+                    ui.painter().rect(
+                        visual_rect,
+                        12,
+                        t::mix(p.panel, tone.tint, hover * 0.35),
+                        Stroke::new(
+                            0.5 + 0.25 * hover,
+                            t::mix(p.line, tone.color, 0.02 + 0.16 * hover),
+                        ),
+                        egui::StrokeKind::Inside,
+                    );
+                    self.audit.empty_card = Some(visual_rect);
+                    self.audit.empty_card_hit = Some(response.rect);
+                    let mut content = ui.new_child(
+                        egui::UiBuilder::new()
+                            .id_salt("empty-card-content")
+                            .max_rect(response.rect.shrink(t::LG))
+                            .layout(egui::Layout::top_down(egui::Align::Center)),
+                    );
+                    content.spacing_mut().item_spacing.y = 0.0;
+                    content
+                        .add_space(((response.rect.height() - 2.0 * t::LG - stack) / 2.0).max(0.0));
+                    let (cluster, _) =
+                        content.allocate_exact_size(cluster_size, egui::Sense::hover());
+                    let geometry_scale = if compact { 0.68 } else { 1.0 };
+                    let decoration_ink = t::mix(p.muted, tone.color, 0.45 + 0.25 * hover);
+                    let side_size = if compact {
+                        Vec2::new(50.0, 40.0)
+                    } else {
+                        Vec2::new(76.0, 56.0)
+                    };
+                    let side_offset = if compact { 68.0 } else { 100.0 };
+                    let side_spread = if compact { 16.0 } else { 20.0 };
+                    let side_icon = if compact { 20.0 } else { 24.0 };
+                    for (icon, direction) in [(Icon::Script, -1.0), (Icon::Plugin, 1.0)] {
+                        let size = side_size * (1.0 + 0.06 * hover);
+                        let rest_y = if direction < 0.0 { 16.0 } else { 4.0 };
+                        let angle =
+                            (if direction < 0.0 { -0.10 } else { 0.08 }) * (1.0 + 0.35 * hover);
+                        let rect = Rect::from_center_size(
+                            cluster.center()
+                                + Vec2::new(
+                                    direction * (side_offset + side_spread * hover),
+                                    (rest_y - 6.0 * hover) * geometry_scale,
+                                ),
+                            size,
+                        );
+                        self.audit.empty_decorations.push(rect.expand(4.0));
+                        self.audit.empty_tile_angles.push(angle);
+                        icons::rect_rotated(
+                            content.painter(),
+                            rect,
+                            12.0,
+                            angle,
+                            t::mix(p.surface, tone.tint, 0.30 * hover),
+                            Stroke::new(0.5_f32, t::mix(p.border, tone.color, 0.12 + 0.38 * hover)),
+                        );
+                        icons::paint_rotated(
+                            content.painter(),
+                            Rect::from_center_size(
+                                rect.center(),
+                                Vec2::splat(side_icon * (1.0 + 0.08 * hover)),
+                            ),
+                            icon,
+                            decoration_ink,
+                            angle,
                         );
                     }
-                    if searching
-                        && height > 80.0
-                        && t::button(ui, lang.tr(K::ClearSearch), t::Button::Secondary, p).clicked()
-                    {
-                        self.search.clear();
+                    for (offset, radius) in [
+                        (Vec2::new(-144.0, -64.0), 4.0),
+                        (Vec2::new(140.0, -60.0), 3.0),
+                        (Vec2::new(-136.0, 64.0), 3.0),
+                        (Vec2::new(144.0, 60.0), 4.0),
+                    ] {
+                        let center = cluster.center()
+                            + (offset + offset.normalized() * (6.0 * hover)) * geometry_scale;
+                        let radius = radius * (1.0 + 0.12 * hover) * geometry_scale;
+                        self.audit
+                            .empty_dots
+                            .push(Rect::from_center_size(center, Vec2::splat(radius * 2.0)));
+                        content.painter().circle_stroke(
+                            center,
+                            radius,
+                            Stroke::new(1.5_f32, decoration_ink),
+                        );
+                    }
+                    let center_size = (if compact { 64.0 } else { 88.0 }) * (1.0 + 0.08 * hover);
+                    let tile = Rect::from_center_size(
+                        cluster.center() + Vec2::new(0.0, (-4.0 - 4.0 * hover) * geometry_scale),
+                        Vec2::splat(center_size),
+                    );
+                    self.audit.empty_decorations.push(tile);
+                    self.audit.empty_tile_angles.push(0.0);
+                    content.painter().rect_filled(
+                        tile,
+                        16,
+                        t::mix(tone.tint, tone.color, 0.08 * hover),
+                    );
+                    icons::paint(
+                        content.painter(),
+                        Rect::from_center_size(tile.center(), Vec2::splat(center_size * 0.40)),
+                        if searching {
+                            Icon::Search
+                        } else if scanning {
+                            Icon::Refresh
+                        } else {
+                            Icon::Import
+                        },
+                        tone.color,
+                    );
+                    self.audit.empty_cluster = Some(cluster);
+                    content.add_space(hero_gap);
+                    let (title_slot, _) = content.allocate_exact_size(
+                        Vec2::new(content.available_width(), title.size().y),
+                        egui::Sense::hover(),
+                    );
+                    self.audit.empty_title_slot = Some(title_slot);
+                    let title_pos =
+                        t::centered_ink(title_slot, &title) + Vec2::new(0.0, -4.0 * hover);
+                    self.audit.empty_title_visual =
+                        Some(Rect::from_min_size(title_pos, title.size()));
+                    content.painter().galley(
+                        title_pos,
+                        title,
+                        t::mix(p.text, tone.color, 0.10 * hover),
+                    );
+                    if let Some(hint) = hint {
+                        content.add_space(title_hint_gap);
+                        let (hint_slot, _) = content.allocate_exact_size(
+                            Vec2::new(content.available_width(), hint.size().y),
+                            egui::Sense::hover(),
+                        );
+                        self.audit.empty_hint_slot = Some(hint_slot);
+                        let hint_pos =
+                            t::centered_ink(hint_slot, &hint) + Vec2::new(0.0, -4.0 * hover);
+                        self.audit.empty_hint_visual =
+                            Some(Rect::from_min_size(hint_pos, hint.size()));
+                        content.painter().galley(
+                            hint_pos,
+                            hint,
+                            t::mix(t::helper_ink(p), tone.color, 0.20 * hover),
+                        );
+                    }
+                    if show_button {
+                        content.add_space(hint_button_gap);
+                        let (clear, clear_visual, clear_icon) = t::secondary_icon_button(
+                            &mut content,
+                            lang.tr(K::ClearSearch),
+                            Icon::Close,
+                            p,
+                            hover,
+                        );
+                        self.audit.empty_clear = Some(clear.rect);
+                        self.audit.empty_clear_visual = Some(clear_visual);
+                        self.audit.empty_clear_icon = Some(clear_icon);
+                        if clear.clicked() {
+                            self.search.clear();
+                        }
                     }
                 },
             );
@@ -266,129 +470,132 @@ impl CavalryKitApp {
                             self.audit
                                 .row_accent
                                 .push(stripe.translate(Vec2::new(0.0, dy)));
-                            ui.with_visual_transform(
-                                egui::emath::TSTransform::from_translation(Vec2::new(0.0, dy)),
-                                |ui| {
-                                    ui.multiply_opacity(row_reveal);
-                                    ui.painter().rect(
-                                        rect,
-                                        t::CARD_RADIUS,
-                                        t::mix(p.panel, p.surface, hover * 0.75),
-                                        Stroke::new(
-                                            if response.has_focus() {
-                                                1.5
-                                            } else {
-                                                hover * 0.75
-                                            },
-                                            t::mix(p.panel, tone.color, 0.8),
-                                        ),
-                                        egui::StrokeKind::Inside,
-                                    );
-                                    ui.painter().rect_filled(
-                                        stripe,
-                                        2,
-                                        t::mix(p.panel, tone.color, 0.68 + 0.32 * hover),
-                                    );
-                                    let tile = Rect::from_center_size(
-                                        Pos2::new(rect.left() + 26.0, rect.center().y),
-                                        Vec2::splat(28.0),
-                                    );
-                                    ui.painter().rect_filled(tile, 6, tone.tint);
-                                    icons::paint(
-                                        ui.painter(),
-                                        tile.shrink(6.0),
-                                        if kind == K::Scripts {
-                                            Icon::Script
+                            let paint_row = |ui: &mut egui::Ui| {
+                                ui.multiply_opacity(row_reveal);
+                                ui.painter().rect(
+                                    rect,
+                                    t::CARD_RADIUS,
+                                    t::mix(p.panel, p.surface, hover * 0.75),
+                                    Stroke::new(
+                                        if response.has_focus() {
+                                            1.5
                                         } else {
-                                            Icon::Plugin
+                                            hover * 0.75
                                         },
-                                        tone.color,
-                                    );
-                                    let x = rect.left() + 52.0;
-                                    let width = (show_rect.left() - t::SM - x).max(16.0);
-                                    let title = t::label_truncated(
-                                        ui,
-                                        name,
-                                        t::content_font(14.0),
-                                        p.text,
-                                        width,
-                                    );
-                                    let subtitle = meta
-                                        .map(|m| format!("{} · {m}", lang.tr(kind)))
-                                        .unwrap_or_else(|| lang.tr(kind).into());
-                                    let detail = t::label_truncated(
-                                        ui,
-                                        &subtitle,
-                                        t::content_font(10.5),
-                                        t::helper_ink(p),
-                                        width,
-                                    );
-                                    let title_ink = t::ink_bounds(&title);
-                                    let detail_ink = t::ink_bounds(&detail);
-                                    let top = rect.center().y
-                                        - (title_ink.height() + t::XS + detail_ink.height()) / 2.0;
-                                    let title_pos =
-                                        Pos2::new(x - title_ink.left(), top - title_ink.top());
-                                    let detail_pos = Pos2::new(
-                                        x - detail_ink.left(),
-                                        top + title_ink.height() + t::XS - detail_ink.top(),
-                                    );
-                                    self.audit.row_text_ink.push((
-                                        title_ink
-                                            .translate(title_pos.to_vec2() + Vec2::new(0.0, dy)),
-                                        detail_ink
-                                            .translate(detail_pos.to_vec2() + Vec2::new(0.0, dy)),
-                                    ));
-                                    if title.elided || detail.elided {
-                                        response.on_hover_text(format!("{name}\n{subtitle}"));
-                                    }
-                                    ui.painter().galley(title_pos, title, p.text);
-                                    ui.painter().galley(detail_pos, detail, t::helper_ink(p));
-                                    t::decorative_dots(ui.painter(), dots.center(), p, hover);
-                                    let mut show = ui.new_child(
-                                        egui::UiBuilder::new()
-                                            .id_salt("reveal-action")
-                                            .max_rect(show_rect),
-                                    );
-                                    let reveal = t::icon_button_guarded(
-                                        &mut show,
-                                        &format!("{} · {name}", lang.tr(K::Reveal)),
-                                        Icon::Reveal,
-                                        false,
-                                        p,
-                                        ready,
-                                        Some(hover),
-                                    );
-                                    let mut remove = ui.new_child(
-                                        egui::UiBuilder::new()
-                                            .id_salt("remove-action")
-                                            .max_rect(remove_rect),
-                                    );
-                                    let uninstall = t::icon_button_guarded(
-                                        &mut remove,
-                                        &format!("{} · {name}", lang.tr(K::Uninstall)),
-                                        Icon::Trash,
-                                        true,
-                                        p,
-                                        ready,
-                                        Some(hover),
-                                    );
-                                    self.audit.row_actions.push((reveal.rect, uninstall.rect));
-                                    self.audit.row_action_art.push((
-                                        t::action_glyph_rect(reveal.rect, Some(hover))
-                                            .translate(Vec2::new(0.0, dy)),
-                                        t::action_glyph_rect(uninstall.rect, Some(hover))
-                                            .translate(Vec2::new(0.0, dy)),
-                                    ));
-                                    self.audit.row_action_ink.push(t::row_action_ink(p, hover));
-                                    if reveal.clicked() {
-                                        paths::reveal_in_file_manager(path);
-                                    }
-                                    if uninstall.clicked() {
-                                        self.confirm_uninstall = Some(path.clone());
-                                    }
-                                },
-                            );
+                                        t::mix(p.panel, tone.color, 0.8),
+                                    ),
+                                    egui::StrokeKind::Inside,
+                                );
+                                ui.painter().rect_filled(
+                                    stripe,
+                                    2,
+                                    t::mix(p.panel, tone.color, 0.68 + 0.32 * hover),
+                                );
+                                let tile = Rect::from_center_size(
+                                    Pos2::new(rect.left() + 26.0, rect.center().y),
+                                    Vec2::splat(28.0),
+                                );
+                                ui.painter().rect_filled(tile, 6, tone.tint);
+                                icons::paint(
+                                    ui.painter(),
+                                    tile.shrink(6.0),
+                                    if kind == K::Scripts {
+                                        Icon::Script
+                                    } else {
+                                        Icon::Plugin
+                                    },
+                                    tone.color,
+                                );
+                                let x = rect.left() + 52.0;
+                                let width = (show_rect.left() - t::SM - x).max(16.0);
+                                let title = t::label_truncated(
+                                    ui,
+                                    name,
+                                    t::content_font(14.0),
+                                    p.text,
+                                    width,
+                                );
+                                let subtitle = meta
+                                    .map(|m| format!("{} · {m}", lang.tr(kind)))
+                                    .unwrap_or_else(|| lang.tr(kind).into());
+                                let detail = t::label_truncated(
+                                    ui,
+                                    &subtitle,
+                                    t::content_font(10.5),
+                                    t::helper_ink(p),
+                                    width,
+                                );
+                                let title_ink = t::ink_bounds(&title);
+                                let detail_ink = t::ink_bounds(&detail);
+                                let top = rect.center().y
+                                    - (title_ink.height() + t::XS + detail_ink.height()) / 2.0;
+                                let title_pos =
+                                    Pos2::new(x - title_ink.left(), top - title_ink.top());
+                                let detail_pos = Pos2::new(
+                                    x - detail_ink.left(),
+                                    top + title_ink.height() + t::XS - detail_ink.top(),
+                                );
+                                self.audit.row_text_ink.push((
+                                    title_ink.translate(title_pos.to_vec2() + Vec2::new(0.0, dy)),
+                                    detail_ink.translate(detail_pos.to_vec2() + Vec2::new(0.0, dy)),
+                                ));
+                                if title.elided || detail.elided {
+                                    response.on_hover_text(format!("{name}\n{subtitle}"));
+                                }
+                                ui.painter().galley(title_pos, title, p.text);
+                                ui.painter().galley(detail_pos, detail, t::helper_ink(p));
+                                t::decorative_dots(ui.painter(), dots.center(), p, hover);
+                                let mut show = ui.new_child(
+                                    egui::UiBuilder::new()
+                                        .id_salt("reveal-action")
+                                        .max_rect(show_rect),
+                                );
+                                let reveal = t::icon_button_guarded(
+                                    &mut show,
+                                    &format!("{} · {name}", lang.tr(K::Reveal)),
+                                    Icon::Reveal,
+                                    false,
+                                    p,
+                                    ready,
+                                    Some(hover),
+                                );
+                                let mut remove = ui.new_child(
+                                    egui::UiBuilder::new()
+                                        .id_salt("remove-action")
+                                        .max_rect(remove_rect),
+                                );
+                                let uninstall = t::icon_button_guarded(
+                                    &mut remove,
+                                    &format!("{} · {name}", lang.tr(K::Uninstall)),
+                                    Icon::Trash,
+                                    true,
+                                    p,
+                                    ready,
+                                    Some(hover),
+                                );
+                                self.audit.row_actions.push((reveal.rect, uninstall.rect));
+                                self.audit.row_action_art.push((
+                                    t::action_glyph_rect(reveal.rect, Some(hover))
+                                        .translate(Vec2::new(0.0, dy)),
+                                    t::action_glyph_rect(uninstall.rect, Some(hover))
+                                        .translate(Vec2::new(0.0, dy)),
+                                ));
+                                self.audit.row_action_ink.push(t::row_action_ink(p, hover));
+                                if reveal.clicked() {
+                                    paths::reveal_in_file_manager(path);
+                                }
+                                if uninstall.clicked() {
+                                    self.confirm_uninstall = Some(path.clone());
+                                }
+                            };
+                            if dy.abs() > f32::EPSILON {
+                                ui.with_visual_transform(
+                                    egui::emath::TSTransform::from_translation(Vec2::new(0.0, dy)),
+                                    paint_row,
+                                );
+                            } else {
+                                paint_row(ui);
+                            }
                         });
                     });
                 }
@@ -397,7 +604,7 @@ impl CavalryKitApp {
         self.audit.card = Some(area);
     }
     fn search_box(&mut self, ui: &mut egui::Ui) {
-        let p = self.p();
+        let p = self.paint_palette(ui.ctx());
         let lang = self.prefs().language;
         let (rect, _) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), t::SEARCH_HEIGHT),
@@ -405,12 +612,7 @@ impl CavalryKitApp {
         );
         self.audit.search = Some(rect);
         let id = egui::Id::new("library-search");
-        let clear_width = if self.search.is_empty() {
-            0.0
-        } else {
-            t::CONTROL
-        };
-        let focus_rect = Rect::from_min_max(rect.min, rect.max - Vec2::new(clear_width, 0.0));
+        let focus_rect = rect;
         let r = ui.interact(focus_rect, id.with("whole-field"), egui::Sense::CLICK);
         if r.clicked() {
             ui.memory_mut(|m| m.request_focus(id));
@@ -446,7 +648,7 @@ impl CavalryKitApp {
         );
         let text_rect = Rect::from_min_max(
             rect.min + Vec2::new(40.0, 0.0),
-            rect.max - Vec2::new(clear_width.max(t::SM), 0.0),
+            rect.max - Vec2::new(t::SM, 0.0),
         );
         let sample = ui.painter().layout_no_wrap(
             if self.search.is_empty() {
@@ -505,18 +707,5 @@ impl CavalryKitApp {
             info.label = Some(lang.tr(K::Search).into());
             info
         });
-        if !self.search.is_empty() {
-            let clear_rect = Rect::from_center_size(
-                Pos2::new(rect.right() - 20.0, rect.center().y),
-                Vec2::splat(t::CONTROL),
-            );
-            let mut clear = ui.new_child(egui::UiBuilder::new().max_rect(clear_rect));
-            self.audit.clear_search = Some(clear_rect);
-            if t::icon_button(&mut clear, lang.tr(K::ClearSearch), Icon::Close, false, p).clicked()
-            {
-                self.search.clear();
-                clear.memory_mut(|m| m.request_focus(id));
-            }
-        }
     }
 }

@@ -1,20 +1,20 @@
-CavalryKit 0.1.1 — 安装、升级与恢复（离线指南）
+CavalryKit 0.1.2 — 安装、升级与恢复（离线指南）
 English: INSTALL.en.txt（同目录）
 发布说明: RELEASE_NOTES.md（同目录，可用文本编辑器阅读）
 
 适用平台
-- macOS Apple Silicon；内部build21。此DMG不是Intel通用包。
+- macOS Apple Silicon；内部build32。此DMG不是Intel通用包。
 - Windows10/11 x64；解压后有CavalryKit.exe和Install-CavalryKit.cmd。
 
-macOS安装 / 从0.1.0升级
+macOS安装 / 从0.1.1升级
 1. 保存正在进行的操作，退出CavalryKit；不需要为替换工具而强制退出Cavalry。
-2. 打开CavalryKit-0.1.1-mac-arm64.dmg。
+2. 打开CavalryKit-0.1.2-mac-arm64.dmg。
 3. 将CavalryKit.app拖到Applications，替换已有的同名应用。只有确认备份后才替换旧版。
 4. 推出磁盘镜像，从/Applications/CavalryKit.app启动，不从旧DMG或改名副本启动。
 5. 此版本ad-hoc签名但未公证，系统可能提示无法验证开发者。请核对来源，不关闭系统安全保护。
 
-Windows安装 / 从0.1.0升级
-1. 完整解压CavalryKit-0.1.1-win-x64.zip，不直接在压缩包里运行。
+Windows安装 / 从0.1.1升级
+1. 完整解压CavalryKit-0.1.2-win-x64.zip，不直接在压缩包里运行。
 2. 关闭CavalryKit，运行Install-CavalryKit.cmd。
 3. 固定入口为%LOCALAPPDATA%\Programs\CavalryKit\CavalryKit.exe。
 4. 后续使用桌面/开始菜单的CavalryKit快捷方式。任务栏仍显示旧图标时，可取消固定后从新快捷方式重新固定。
@@ -40,6 +40,6 @@ Cmd/Ctrl+F搜索；Cmd/Ctrl+O选择；Cmd/Ctrl+R刷新；Cmd/Ctrl+,设置；Esc�
 校验Release同目录SHA256SUMS.txt中的包hash。只有一个包时只比较对应行，不把另一个缺失包误认为文件损坏。
 
 联网资料（离线使用不依赖以下链接）
-版本发布: https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.1
-中文说明: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.md
-English: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.1/README.en.md
+版本发布: https://github.com/luoboruodai/Cavalrykit/releases/tag/v0.1.2
+中文说明: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.2/README.md
+English: https://github.com/luoboruodai/Cavalrykit/blob/v0.1.2/README.en.md
